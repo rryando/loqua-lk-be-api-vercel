@@ -1,0 +1,861 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Japanese Language Tutor API",
+    "description": "\n# Japanese Language Tutor API\n\nA comprehensive API for managing Japanese language learning sessions, user progress, and LiveKit integration.\n\n## Authentication\n\nThe API supports multiple authentication methods:\n\n### 🔐 **User Authentication** (Standard Endpoints)\n- **Supabase Auth**: Google OAuth, email/password, and more\n- **Custom JWT**: Your own JWT tokens\n- **Header**: `Authorization: Bearer <user_token>`\n\n### 🤖 **Agent Authentication** (Agent Endpoints)\n- **Service Account**: Special JWT tokens for the Python agent\n- **Permissions**: `user.context`, `user.progress`, `session.create`\n- **Header**: `Authorization: Bearer <agent_token>`\n\n## Agent Integration\n\nThe agent endpoints follow the **app-flow.md** pattern:\n\n1. **User connects** → Gets LiveKit token with metadata\n2. **Agent joins room** → Extracts userId from metadata  \n3. **Agent calls API** → Uses service JWT + userId context\n4. **API validates** → Agent permissions + user existence\n\n### 🔗 Integration Flow\n\n```python\n# Python Agent Example\nheaders = {'Authorization': f'Bearer {AGENT_SERVICE_JWT}'}\n\n# Get user context for personalization\ncontext = requests.get(f'/api/agent/user/{user_id}/context', \n                      headers=headers,\n                      json={'userId': user_id})\n\n# Update progress during session\nrequests.post('/api/agent/progress',\n               headers=headers,\n               json={'userId': user_id, 'data': {...}})\n\n# Create session record\nrequests.post('/api/agent/sessions',\n               headers=headers, \n               json={'userId': user_id, ...})\n```\n      ",
+    "version": "1.0.0",
+    "contact": {
+      "name": "API Support",
+      "email": "support@example.com"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5173",
+      "description": "Development server"
+    },
+    {
+      "url": "https://api.yourdomain.com",
+      "description": "Production server"
+    }
+  ],
+  "components": {
+    "schemas": {},
+    "parameters": {}
+  },
+  "tags": [
+    {
+      "name": "Health",
+      "description": "Service health and status endpoints"
+    },
+    {
+      "name": "User Context",
+      "description": "User preferences, progress, and context management"
+    },
+    {
+      "name": "Sessions",
+      "description": "Learning session creation and management"
+    },
+    {
+      "name": "LiveKit",
+      "description": "Real-time video/audio room management"
+    },
+    {
+      "name": "Analytics",
+      "description": "Progress tracking and analytics"
+    },
+    {
+      "name": "Agent",
+      "description": "🤖 Agent service endpoints for Python agent integration (requires agent JWT)"
+    }
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "API information",
+        "description": "Get basic API information and status",
+        "responses": {
+          "200": {
+            "description": "API information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string"
+                    },
+                    "documentation": {
+                      "type": "object",
+                      "properties": {
+                        "openapi": {
+                          "type": "string"
+                        },
+                        "swagger": {
+                          "type": "string"
+                        },
+                        "scalar": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "openapi",
+                        "swagger",
+                        "scalar"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "message",
+                    "version",
+                    "status",
+                    "timestamp",
+                    "documentation"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Health check",
+        "description": "Check API service health and status",
+        "responses": {
+          "200": {
+            "description": "Service is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    },
+                    "database": {
+                      "type": "string"
+                    },
+                    "auth_providers": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "timestamp",
+                    "version",
+                    "database",
+                    "auth_providers"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/progress": {
+      "post": {
+        "tags": [
+          "Agent"
+        ],
+        "summary": "Update user progress (Agent)",
+        "description": "Update user progress during a learning session on behalf of a user using agent service account authentication.",
+        "security": [
+          {
+            "agentAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "userId": {
+                    "type": "string"
+                  },
+                  "sessionId": {
+                    "type": "string"
+                  },
+                  "data": {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "in_progress",
+                          "completed",
+                          "failed"
+                        ]
+                      },
+                      "progress": {
+                        "type": "object",
+                        "properties": {
+                          "words_learned": {
+                            "type": "number"
+                          },
+                          "phrases_practiced": {
+                            "type": "number"
+                          },
+                          "pronunciation_score": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 100
+                          },
+                          "topics_covered": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "grammar_points": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "required": [
+                      "status"
+                    ]
+                  }
+                },
+                "required": [
+                  "userId",
+                  "data"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Progress updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "userId": {
+                      "type": "string"
+                    },
+                    "sessionId": {
+                      "type": "string"
+                    },
+                    "agentId": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "message",
+                    "userId",
+                    "agentId",
+                    "timestamp"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    },
+                    "timestamp": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "timestamp"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid agent token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    },
+                    "timestamp": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "timestamp"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/sessions": {
+      "post": {
+        "tags": [
+          "Agent"
+        ],
+        "summary": "Create learning session (Agent)",
+        "description": "Create a learning session record on behalf of a user using agent service account authentication.",
+        "security": [
+          {
+            "agentAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "userId": {
+                    "type": "string"
+                  },
+                  "sessionId": {
+                    "type": "string"
+                  },
+                  "duration_minutes": {
+                    "type": "number",
+                    "minimum": 0,
+                    "exclusiveMinimum": true
+                  },
+                  "topics_covered": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "new_vocabulary": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "grammar_points": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "pronunciation_practice_count": {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  "overall_performance": {
+                    "type": "string"
+                  },
+                  "achievements": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "next_session_recommendations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "userId",
+                  "duration_minutes",
+                  "topics_covered",
+                  "new_vocabulary",
+                  "grammar_points",
+                  "pronunciation_practice_count",
+                  "overall_performance",
+                  "achievements"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Session created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "session_id": {
+                      "type": "string"
+                    },
+                    "created_at": {
+                      "type": "string"
+                    },
+                    "created_by": {
+                      "type": "string",
+                      "enum": [
+                        "agent"
+                      ]
+                    },
+                    "agent_id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "success",
+                    "session_id",
+                    "created_at",
+                    "created_by",
+                    "agent_id"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    },
+                    "timestamp": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "timestamp"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/user/{user_id}/context": {
+      "post": {
+        "tags": [
+          "Agent"
+        ],
+        "summary": "Get user context (Agent)",
+        "description": "Retrieve user learning context for personalization during agent sessions.",
+        "security": [
+          {
+            "agentAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "user_id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "userId": {
+                    "type": "string"
+                  },
+                  "sessionId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "userId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "User context retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user_id": {
+                      "type": "string"
+                    },
+                    "preferences": {
+                      "type": "object",
+                      "properties": {
+                        "learning_level": {
+                          "type": "string"
+                        },
+                        "learning_goals": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "preferred_topics": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "practice_frequency": {
+                          "type": "string"
+                        },
+                        "session_duration_preference": {
+                          "type": "number"
+                        },
+                        "wants_formal_speech": {
+                          "type": "boolean"
+                        },
+                        "wants_kanji_practice": {
+                          "type": "boolean"
+                        },
+                        "wants_grammar_focus": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "learning_level",
+                        "learning_goals",
+                        "preferred_topics",
+                        "practice_frequency",
+                        "session_duration_preference",
+                        "wants_formal_speech",
+                        "wants_kanji_practice",
+                        "wants_grammar_focus"
+                      ]
+                    },
+                    "progress": {
+                      "type": "object",
+                      "properties": {
+                        "total_sessions": {
+                          "type": "number"
+                        },
+                        "total_conversation_time": {
+                          "type": "number"
+                        },
+                        "words_learned": {
+                          "type": "number"
+                        },
+                        "phrases_practiced": {
+                          "type": "number"
+                        },
+                        "pronunciation_score_avg": {
+                          "type": "number"
+                        },
+                        "grammar_points_covered": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "achievements_unlocked": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "last_session_date": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "current_streak": {
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "total_sessions",
+                        "total_conversation_time",
+                        "words_learned",
+                        "phrases_practiced",
+                        "pronunciation_score_avg",
+                        "grammar_points_covered",
+                        "achievements_unlocked",
+                        "last_session_date",
+                        "current_streak"
+                      ]
+                    },
+                    "session_history": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "session_id": {
+                            "type": "string"
+                          },
+                          "date": {
+                            "type": "string"
+                          },
+                          "duration_minutes": {
+                            "type": "number"
+                          },
+                          "topics_covered": {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": [
+                          "session_id",
+                          "date",
+                          "duration_minutes",
+                          "topics_covered"
+                        ]
+                      }
+                    },
+                    "created_at": {
+                      "type": "string"
+                    },
+                    "updated_at": {
+                      "type": "string"
+                    },
+                    "accessed_by": {
+                      "type": "object",
+                      "properties": {
+                        "agent_id": {
+                          "type": "string"
+                        },
+                        "timestamp": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "agent_id",
+                        "timestamp"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "user_id",
+                    "preferences",
+                    "progress",
+                    "session_history",
+                    "created_at",
+                    "updated_at",
+                    "accessed_by"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User context not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    },
+                    "timestamp": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "timestamp"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/agent/health": {
+      "post": {
+        "tags": [
+          "Agent"
+        ],
+        "summary": "Agent health check",
+        "description": "Health check endpoint specifically for agent services. Requires userId for agent context validation.",
+        "security": [
+          {
+            "agentAuth": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "userId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "userId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Agent service is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "healthy"
+                      ]
+                    },
+                    "agent_id": {
+                      "type": "string"
+                    },
+                    "permissions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "timestamp": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "agent_id",
+                    "permissions",
+                    "timestamp"
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing userId or invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ]
+                    },
+                    "timestamp": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "error",
+                    "timestamp"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
