@@ -1,0 +1,1 @@
+- whenever i say "discussion" always think hard, provide any explanation, list of solution, list of potential problem, and plans if execution needed, but do not proceed any execution, let user choose the best approach

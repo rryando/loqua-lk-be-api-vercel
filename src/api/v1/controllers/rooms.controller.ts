@@ -39,9 +39,9 @@ export class RoomsController {
         try {
             // Get LiveKit environment variables
             const liveKitEnv = env<LiveKitEnv>(c);
-            const apiKey = liveKitEnv.LIVEKIT_API_KEY || process.env.LIVEKIT_API_KEY;
-            const apiSecret = liveKitEnv.LIVEKIT_API_SECRET || process.env.LIVEKIT_API_SECRET;
-            const liveKitUrl = liveKitEnv.LIVEKIT_URL || process.env.LIVEKIT_URL;
+            const apiKey = liveKitEnv.LIVEKIT_API_KEY || import.meta.env.VITE_LIVEKIT_API_KEY;
+            const apiSecret = liveKitEnv.LIVEKIT_API_SECRET || import.meta.env.VITE_LIVEKIT_API_SECRET;
+            const liveKitUrl = liveKitEnv.LIVEKIT_URL || import.meta.env.VITE_LIVEKIT_URL;
 
             if (!apiKey || !apiSecret || !liveKitUrl) {
                 console.error('LiveKit configuration missing:', {

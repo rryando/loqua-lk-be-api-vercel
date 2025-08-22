@@ -10,6 +10,7 @@ import {
     agentSessionRoute,
     agentUserContextRoute,
     agentHealthRoute,
+    notLoggedInHealthRoute,
 } from '../openapi/agent-openapi';
 
 const agent = new OpenAPIHono();
@@ -52,5 +53,13 @@ agent.openapi(agentHealthRoute, async (c, next) => {
 
     return AgentController.healthCheck(c);
 });
+
+agent.openapi(notLoggedInHealthRoute, async (c, next) => {
+    return c.json({
+        status: 'healthy' as const,
+        timestamp: new Date().toISOString(),
+    });
+});
+
 
 export default agent;

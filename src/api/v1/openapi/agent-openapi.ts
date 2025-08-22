@@ -400,3 +400,27 @@ Health check endpoint specifically for agent services.
     },
     security: [{ agentAuth: [] }],
 });
+
+
+export const notLoggedInHealthRoute = createRoute({
+    method: 'get',
+    path: '/health',
+    tags: ['Agent'],
+    summary: 'Agent health check',
+    description: `
+Health check endpoint specifically for agent services.
+  `,
+    responses: {
+        200: {
+            description: 'Agent service is healthy',
+            content: {
+                'application/json': {
+                    schema: z.object({
+                        status: z.literal('healthy'),
+                        timestamp: z.string(),
+                    }),
+                },
+            },
+        },
+    },
+});
