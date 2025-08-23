@@ -142,7 +142,7 @@ setupDocumentation(app);
 app.route('/api/users', usersRoutes);
 app.route('/api/sessions', sessionsRoutes);
 app.route('/api/rooms', roomsRoutes);
-app.route('/api/agent', agentRoutes);
+app.route('/api/v1/agent', agentRoutes);
 
 // Global error handler
 app.onError((err, c) => {

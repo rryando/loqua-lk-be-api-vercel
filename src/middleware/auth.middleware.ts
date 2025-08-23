@@ -10,6 +10,7 @@ import { SupabaseAuthProvider } from '../auth/providers/supabase';
 import { JWTAuthProvider } from '../auth/providers/jwt';
 import { AgentAuthProvider } from '../auth/providers/agent';
 import { AuthUser } from '../auth/providers/base';
+import { EnvironmentConfig } from '../utils/environment-config';
 
 declare module 'hono' {
   interface ContextVariableMap {
@@ -115,19 +116,36 @@ export const supabaseMiddleware = (): MiddlewareHandler => {
     );
     authManager.registerProvider(supabaseProvider, true);
 
-    // Register JWT provider if secret is available
-    const jwtSecret = supabaseEnv.JWT_SECRET ?? supabaseEnv.VITE_JWT_SECRET ?? process.env.JWT_SECRET ?? import.meta.env.VITE_JWT_SECRET;
-    console.log('JWT Secret available:', !!jwtSecret); // Debug log
-    if (jwtSecret) {
-      const jwtProvider = new JWTAuthProvider(jwtSecret);
-      authManager.registerProvider(jwtProvider);
+    // Register JWT provider and Agent provider using environment-specific configuration
+    try {
+      const envConfig = EnvironmentConfig.getInstance();
+      const jwtSecret = envConfig.getJwtSecret();
+      
+      console.log('Environment:', envConfig.getEnvironment()); // Debug log
+      console.log('JWT Secret available:', !!jwtSecret); // Debug log
+      
+      if (jwtSecret) {
+        const jwtProvider = new JWTAuthProvider(jwtSecret);
+        authManager.registerProvider(jwtProvider);
 
-      // Also register agent provider using same secret
-      const agentProvider = new AgentAuthProvider(jwtSecret);
-      authManager.registerProvider(agentProvider);
-      console.log('Registered JWT and Agent providers'); // Debug log
-    } else {
-      console.log('No JWT secret found, skipping JWT/Agent providers'); // Debug log
+        // Also register agent provider using environment-specific secret
+        const agentProvider = new AgentAuthProvider(jwtSecret);
+        authManager.registerProvider(agentProvider);
+        console.log('Registered JWT and Agent providers with environment-specific secrets'); // Debug log
+      } else {
+        console.log('No JWT secret found, skipping JWT/Agent providers'); // Debug log
+      }
+    } catch (error) {
+      console.error('Failed to get environment configuration:', error);
+      // Fallback to old method if environment config fails
+      const jwtSecret = supabaseEnv.JWT_SECRET ?? supabaseEnv.VITE_JWT_SECRET ?? process.env.JWT_SECRET ?? import.meta.env.VITE_JWT_SECRET;
+      if (jwtSecret) {
+        const jwtProvider = new JWTAuthProvider(jwtSecret);
+        authManager.registerProvider(jwtProvider);
+        const agentProvider = new AgentAuthProvider(jwtSecret);
+        authManager.registerProvider(agentProvider);
+        console.log('Using fallback JWT secret'); // Debug log
+      }
     }
 
     c.set('authManager', authManager);
@@ -286,4 +304,24 @@ export const extractUserId = (c: Context): string | null => {
   }
 
   return null;
+};
+
+// Helper function to extract agent identification from headers
+export const getAgentInfo = (c: Context): { agentId?: string; isAgentRequest: boolean } => {
+  const agentIdHeader = c.req.header('X-Agent-ID');
+  const userAgentHeader = c.req.header('User-Agent');
+  
+  // Check if this is an agent-made request
+  const isAgentRequest = !!(agentIdHeader || userAgentHeader?.includes('livekit-agent'));
+  
+  return {
+    agentId: agentIdHeader || undefined,
+    isAgentRequest
+  };
+};
+
+// Helper function to check if user is acting via agent
+export const isAgentOnBehalfRequest = (c: Context): boolean => {
+  const agentInfo = getAgentInfo(c);
+  return agentInfo.isAgentRequest;
 };

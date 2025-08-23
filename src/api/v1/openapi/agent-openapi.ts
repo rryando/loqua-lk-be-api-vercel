@@ -402,6 +402,119 @@ Health check endpoint specifically for agent services.
 });
 
 
+// Agent User Token Route
+export const agentUserTokenRoute = createRoute({
+    method: 'post',
+    path: '/user-token',
+    tags: ['Agent'],
+    summary: 'Get encrypted user JWT token',
+    description: `
+Get encrypted user JWT token for agent to use when making API calls on behalf of user.
+
+**Purpose:**
+- Agent requests encrypted user JWT after user joins room
+- Prevents race conditions by waiting for user presence first
+- Enables agent to act on behalf of user with proper permissions
+
+**Pattern:**
+1. User joins LiveKit room with metadata containing userId
+2. Agent waits for participant presence using ctx.wait_for_participant()
+3. Agent extracts userId from participant metadata
+4. Agent requests encrypted user JWT from this endpoint
+5. Agent decrypts JWT and uses it for subsequent API calls
+
+**Security:**
+- User JWT is encrypted using AES-256-CBC
+- Agent must provide valid agent JWT for authentication
+- Room and user validation ensures proper access control
+
+**Python Agent Usage:**
+\`\`\`python
+# After waiting for participant
+user_participant = await ctx.wait_for_participant()
+user_id = user_participant.attributes.get("user_id")
+
+# Request encrypted user token
+response = await http_client.post("/api/v1/agent/user-token", 
+  headers={"Authorization": f"Bearer {AGENT_JWT}"},
+  json={
+    "room_name": ctx.room.name,
+    "user_id": user_id,
+    "agent_id": "my-agent-id"
+  })
+
+encrypted_token = response.json()["encrypted_token"]
+user_jwt = decrypt_token(encrypted_token, SHARED_SECRET)
+
+# Use user_jwt for subsequent API calls
+\`\`\`
+  `,
+    request: {
+        body: {
+            content: {
+                'application/json': {
+                    schema: z.object({
+                        room_name: z.string().describe('LiveKit room name'),
+                        user_id: z.string().describe('User ID from LiveKit participant metadata'),
+                        agent_id: z.string().describe('Agent identifier for audit logging'),
+                    }),
+                },
+            },
+            description: 'User token request parameters',
+        },
+    },
+    responses: {
+        200: {
+            description: 'Encrypted user JWT token',
+            content: {
+                'application/json': {
+                    schema: z.object({
+                        encrypted_token: z.string().describe('AES-256-CBC encrypted user JWT'),
+                        user_id: z.string().describe('User ID this token belongs to'),
+                        room_name: z.string().describe('Room name this token is valid for'),
+                        expires_in: z.number().describe('Token expiry in seconds'),
+                        issued_at: z.string().describe('ISO timestamp when token was issued'),
+                        issued_to: z.string().describe('Agent ID this token was issued to'),
+                    }),
+                },
+            },
+        },
+        400: {
+            description: 'Missing required fields',
+            content: {
+                'application/json': {
+                    schema: APIErrorSchema,
+                },
+            },
+        },
+        401: {
+            description: 'Invalid agent token',
+            content: {
+                'application/json': {
+                    schema: APIErrorSchema,
+                },
+            },
+        },
+        404: {
+            description: 'User not found',
+            content: {
+                'application/json': {
+                    schema: APIErrorSchema,
+                },
+            },
+        },
+        500: {
+            description: 'Server error or configuration issue',
+            content: {
+                'application/json': {
+                    schema: APIErrorSchema,
+                },
+            },
+        },
+    },
+    security: [{ agentAuth: [] }],
+});
+
 export const notLoggedInHealthRoute = createRoute({
     method: 'get',
     path: '/health',

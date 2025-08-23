@@ -51,6 +51,8 @@ export class AgentAuthProvider extends BaseAuthProvider {
             };
         } catch (error) {
             console.error('Agent JWT verification error:', error);
+            console.error('Token preview:', token?.substring(0, 50) + '...');
+            console.error('Token length:', token?.length);
             return null;
         }
     }

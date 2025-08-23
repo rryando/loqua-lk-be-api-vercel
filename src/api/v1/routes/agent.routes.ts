@@ -10,13 +10,23 @@ import {
     agentSessionRoute,
     agentUserContextRoute,
     agentHealthRoute,
+    agentUserTokenRoute,
     notLoggedInHealthRoute,
 } from '../openapi/agent-openapi';
 
 const agent = new OpenAPIHono();
 
+// POST /agent/user-token - Get encrypted user JWT token
+agent.openapi(agentUserTokenRoute, async (c) => {
+    // Apply middleware manually
+    await agentAuthMiddleware()(c, async () => { });
+    await validateAgentContext()(c, async () => { });
+
+    return AgentController.getUserToken(c);
+});
+
 // POST /agent/progress - Update user progress during session
-agent.openapi(agentProgressRoute, async (c, next) => {
+agent.openapi(agentProgressRoute, async (c) => {
     // Apply middleware manually
     await agentAuthMiddleware()(c, async () => { });
     await validateAgentContext()(c, async () => { });
@@ -26,7 +36,7 @@ agent.openapi(agentProgressRoute, async (c, next) => {
 });
 
 // POST /agent/sessions - Create session on behalf of user
-agent.openapi(agentSessionRoute, async (c, next) => {
+agent.openapi(agentSessionRoute, async (c) => {
     // Apply middleware manually
     await agentAuthMiddleware()(c, async () => { });
     await validateAgentContext()(c, async () => { });
@@ -36,7 +46,7 @@ agent.openapi(agentSessionRoute, async (c, next) => {
 });
 
 // POST /agent/user/{user_id}/context - Get user context for agent
-agent.openapi(agentUserContextRoute, async (c, next) => {
+agent.openapi(agentUserContextRoute, async (c) => {
     // Apply middleware manually
     await agentAuthMiddleware()(c, async () => { });
     await validateAgentContext()(c, async () => { });
@@ -46,7 +56,7 @@ agent.openapi(agentUserContextRoute, async (c, next) => {
 });
 
 // POST /agent/health - Agent health check
-agent.openapi(agentHealthRoute, async (c, next) => {
+agent.openapi(agentHealthRoute, async (c) => {
     // Apply middleware manually
     await agentAuthMiddleware()(c, async () => { });
     await validateAgentContext()(c, async () => { });
@@ -54,7 +64,7 @@ agent.openapi(agentHealthRoute, async (c, next) => {
     return AgentController.healthCheck(c);
 });
 
-agent.openapi(notLoggedInHealthRoute, async (c, next) => {
+agent.openapi(notLoggedInHealthRoute, async (c) => {
     return c.json({
         status: 'healthy' as const,
         timestamp: new Date().toISOString(),

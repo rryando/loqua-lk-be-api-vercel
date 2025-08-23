@@ -164,3 +164,25 @@ export interface DatabaseAchievement {
     data: Record<string, any>;
     unlocked_at: string;
 }
+
+// Agent Context Types
+export interface AgentContext {
+    agentId: string;
+    userId: string;
+    sessionId?: string;
+    permissions: string[];
+    isAutoInitialized?: boolean;
+}
+
+export interface DatabaseAgentContext {
+    id: string;
+    agent_id: string;
+    user_id: string;
+    session_id: string | null;
+    permissions: string[];
+    is_auto_initialized: boolean;
+    metadata: Record<string, any>;
+    created_at: string;
+    updated_at: string;
+    last_used_at: string;
+}
