@@ -154,6 +154,15 @@ export interface DatabaseLearningSession {
     created_at: string;
 }
 
+export interface DatabaseUserFlashCard {
+    user_id: string;
+    card_id: string;
+    card_type: string;
+    card_data: string;
+    created_by: string;
+    agent_id: string;
+}
+
 export interface DatabaseAchievement {
     id: string;
     user_id: string;

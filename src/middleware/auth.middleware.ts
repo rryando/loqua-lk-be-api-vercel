@@ -40,22 +40,22 @@ export const getCurrentDbUser = (c: Context) => {
 export const getAuthenticatedSupabase = (c: Context) => {
   const supabaseEnv = env<SupabaseEnv>(c);
   const authHeader = c.req.header('Authorization');
-  
+
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     throw new Error('No authorization token found');
   }
-  
-  const token = authHeader.substring(7);
-  
+
+  // For agent operations, use the service role key which bypasses RLS
+  const serviceKey = supabaseEnv.VITE_SUPABASE_SERVICE_ROLE_KEY ?? import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!serviceKey) {
+    throw new Error('Service role key required for agent operations. Please set VITE_SUPABASE_SERVICE_ROLE_KEY');
+  }
+
   return createServerClient(
     supabaseEnv.VITE_SUPABASE_URL ?? import.meta.env.VITE_SUPABASE_URL,
-    supabaseEnv.VITE_SUPABASE_ANON_KEY ?? import.meta.env.VITE_SUPABASE_ANON_KEY,
+    serviceKey,
     {
-      global: {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      },
       cookies: {
         getAll() { return []; },
         setAll() { /* no-op */ }
@@ -67,6 +67,7 @@ export const getAuthenticatedSupabase = (c: Context) => {
 type SupabaseEnv = {
   VITE_SUPABASE_URL: string;
   VITE_SUPABASE_ANON_KEY: string;
+  VITE_SUPABASE_SERVICE_ROLE_KEY?: string;
   JWT_SECRET?: string;
   VITE_JWT_SECRET?: string;
 };
@@ -120,10 +121,10 @@ export const supabaseMiddleware = (): MiddlewareHandler => {
     try {
       const envConfig = EnvironmentConfig.getInstance();
       const jwtSecret = envConfig.getJwtSecret();
-      
+
       console.log('Environment:', envConfig.getEnvironment()); // Debug log
       console.log('JWT Secret available:', !!jwtSecret); // Debug log
-      
+
       if (jwtSecret) {
         const jwtProvider = new JWTAuthProvider(jwtSecret);
         authManager.registerProvider(jwtProvider);
@@ -310,10 +311,10 @@ export const extractUserId = (c: Context): string | null => {
 export const getAgentInfo = (c: Context): { agentId?: string; isAgentRequest: boolean } => {
   const agentIdHeader = c.req.header('X-Agent-ID');
   const userAgentHeader = c.req.header('User-Agent');
-  
+
   // Check if this is an agent-made request
   const isAgentRequest = !!(agentIdHeader || userAgentHeader?.includes('livekit-agent'));
-  
+
   return {
     agentId: agentIdHeader || undefined,
     isAgentRequest

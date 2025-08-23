@@ -236,8 +236,8 @@ The Python agent calls this endpoint when a user joins a LiveKit room to:
             content: {
                 'application/json': {
                     schema: z.object({
-                        userId: z.string().describe('User ID for validation (must match path param)'),
-                        sessionId: z.string().optional().describe('Optional session ID for tracking'),
+                        user_id: z.string().describe('User ID for validation (must match path param)'),
+                        session_id: z.string().optional().describe('Optional session ID for tracking'),
                     }),
                 },
             },
@@ -278,6 +278,97 @@ The Python agent calls this endpoint when a user joins a LiveKit room to:
                             duration_minutes: z.number(),
                             topics_covered: z.array(z.string()),
                         })),
+                        created_at: z.string(),
+                        updated_at: z.string(),
+                        accessed_by: z.object({
+                            agent_id: z.string(),
+                            timestamp: z.string(),
+                        }),
+                    }),
+                },
+            },
+        },
+        400: {
+            description: 'Invalid request or missing userId',
+            content: {
+                'application/json': {
+                    schema: APIErrorSchema,
+                },
+            },
+        },
+        401: {
+            description: 'Invalid agent token',
+            content: {
+                'application/json': {
+                    schema: APIErrorSchema,
+                },
+            },
+        },
+        403: {
+            description: 'Insufficient agent permissions',
+            content: {
+                'application/json': {
+                    schema: APIErrorSchema,
+                },
+            },
+        },
+        404: {
+            description: 'User context not found',
+            content: {
+                'application/json': {
+                    schema: APIErrorSchema,
+                },
+            },
+        },
+    },
+    security: [{ agentAuth: [] }],
+});
+
+
+export const agentCreateUserFlashCardRoute = createRoute({
+    method: 'post',
+    path: '/user/{user_id}/create_flash_card',
+    tags: ['Agent'],
+    summary: 'Create flash card for user (Agent)',
+    description: `
+Create a flash card for a user.
+
+**Agent Use Case:**
+The Python agent calls this endpoint when a user creates a flash card to:
+- Create a flash card for a user
+
+**Security:**
+- Requires agent service account JWT with 'user.create_flash_card' permission
+- Agent must provide userId in request body for validation
+- Returns flash card created successfully
+
+  `,
+    request: {
+        params: z.object({
+            user_id: z.string().describe('User ID to retrieve context for'),
+        }),
+        body: {
+            content: {
+                'application/json': {
+                    schema: z.object({
+                        cardId: z.string().describe('Card ID for validation (must match path param)'),
+                        cardType: z.string().describe('Card Type for validation (must match path param)'),
+                        cardData: z.string().describe('Card Data for validation (must match path param)'),
+                    }),
+                },
+            },
+            description: 'Agent flash card creation request with user validation',
+        },
+    },
+    responses: {
+        200: {
+            description: 'Flash card created successfully',
+            content: {
+                'application/json': {
+                    schema: z.object({
+                        card_id: z.string(),
+                        card_type: z.string(),
+                        card_data: z.string(),
                         created_at: z.string(),
                         updated_at: z.string(),
                         accessed_by: z.object({

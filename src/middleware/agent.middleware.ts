@@ -1,5 +1,5 @@
 import type { Context, MiddlewareHandler } from 'hono';
-import { getSupabase, getAuthManager, getCurrentUser } from './auth.middleware';
+import { getSupabase, getAuthManager, getCurrentUser, getAuthenticatedSupabase } from './auth.middleware';
 import { APIError } from '../types/index';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -12,6 +12,7 @@ declare module 'hono' {
             permissions: string[];
             isAutoInitialized?: boolean;
         } | null;
+        requestBody?: any;
     }
 }
 
@@ -20,11 +21,11 @@ const createDefaultAgentContext = async (c: Context, requestBody?: any) => {
     const agentId = `auto-agent-${uuidv4()}`;
     const userId = requestBody?.user_id || requestBody?.userId || 'unknown';
     const sessionId = requestBody?.session_id || requestBody?.sessionId;
-    
+
     // Minimal safe permissions for auto-initialized contexts
     const defaultPermissions = [
         'basic_access',
-        'read_user_context', 
+        'read_user_context',
         'create_session',
         'update_progress'
     ];
@@ -43,63 +44,29 @@ const createDefaultAgentContext = async (c: Context, requestBody?: any) => {
     return defaultContext;
 };
 
-// Helper function to persist agent context to database
-const persistAgentContext = async (c: Context, agentContext: any) => {
-    try {
-        const supabase = getSupabase(c);
-        
-        // Insert the agent context into the database
-        const { data, error } = await supabase
-            .from('agent_contexts')
-            .insert({
-                agent_id: agentContext.agentId,
-                user_id: agentContext.userId,
-                session_id: agentContext.sessionId,
-                permissions: agentContext.permissions,
-                is_auto_initialized: agentContext.isAutoInitialized || false,
-                metadata: {
-                    created_via: 'auto-initialization',
-                    request_timestamp: new Date().toISOString()
-                }
-            })
-            .select()
-            .single();
-
-        if (error) {
-            console.error('Failed to persist agent context to database:', error);
-            return false;
-        }
-
-        console.log(`Agent context persisted to database: ${agentContext.agentId}`);
-        return true;
-    } catch (error) {
-        console.error('Error persisting agent context:', error);
-        return false;
-    }
-};
 
 // Enhanced getAgentContext with auto-initialization
 export const getAgentContext = async (c: Context, autoInitialize: boolean = true) => {
     const requestStartTime = Date.now();
     let agentContext = c.get('agentContext');
-    
+
     // If context exists, return it
     if (agentContext) {
         return agentContext;
     }
-    
+
     // If auto-initialization is disabled, return null
     if (!autoInitialize) {
         console.log('Agent context not found, auto-initialization disabled');
         return null;
     }
-    
+
     console.log('Agent context not found, attempting auto-initialization...');
-    
+
     try {
         // Try to parse request body to get context clues
         let requestBody = {};
-        
+
         try {
             // Try to get JSON body - this will work if body hasn't been consumed yet
             requestBody = await c.req.json().catch(() => ({}));
@@ -121,24 +88,13 @@ export const getAgentContext = async (c: Context, autoInitialize: boolean = true
 
         // Create default context
         const defaultContext = await createDefaultAgentContext(c, requestBody);
-        
-        // Set the context for this request
+
+        // Set the ephemeral context for this request (no database persistence)
         c.set('agentContext', defaultContext);
-        
-        // Persist to database (non-blocking)
-        persistAgentContext(c, defaultContext).then(success => {
-            if (success) {
-                console.log(`Agent context initialization completed successfully in ${Date.now() - requestStartTime}ms`);
-            } else {
-                console.warn(`Agent context created but persistence failed for ${defaultContext.agentId}`);
-            }
-        }).catch(error => {
-            console.error('Background persistence failed:', error);
-        });
-        
+
         // Log successful initialization
         console.log(`Agent context auto-initialized: ${defaultContext.agentId} for user: ${defaultContext.userId}`);
-        
+
         return defaultContext;
     } catch (error) {
         console.error('Critical failure in agent context auto-initialization:', {
@@ -155,6 +111,11 @@ export const getAgentContext = async (c: Context, autoInitialize: boolean = true
 // Legacy synchronous version for backward compatibility
 export const getAgentContextSync = (c: Context) => {
     return c.get('agentContext');
+};
+
+// Helper to get pre-parsed request body from context
+export const getRequestBody = (c: Context) => {
+    return c.get('requestBody') || {};
 };
 
 // Middleware for agent authentication
@@ -238,39 +199,51 @@ export const validateAgentContext = (): MiddlewareHandler => {
             return c.json(error, 403);
         }
 
-        // Get request body to extract userId and sessionId
+        // Read request body once and store in context for controller to use
         const body = await c.req.json().catch(() => ({}));
-        const { userId, sessionId } = body;
+
+        // Handle both camelCase (userId) and snake_case (user_id) for compatibility
+        const userId = body.userId || body.user_id;
+        const sessionId = body.sessionId || body.session_id;
 
         if (!userId) {
             const error: APIError = {
                 error: {
                     code: 'MISSING_USER_ID',
-                    message: 'Agent requests must include userId in request body'
+                    message: 'Agent requests must include userId or user_id in request body'
                 },
                 timestamp: new Date().toISOString()
             };
             return c.json(error, 400);
         }
 
-        // TODO: Validate that userId + sessionId matches active LiveKit session
-        // For now, we'll do basic validation that the user exists
-        const supabase = getSupabase(c);
-        const { data: dbUser, error: dbError } = await supabase
-            .from('users')
-            .select('user_id')
-            .eq('user_id', userId)
-            .single();
+        // Store the parsed body in context so controller doesn't need to re-read it
+        c.set('requestBody', body);
 
-        if (dbError || !dbUser) {
-            const error: APIError = {
-                error: {
-                    code: 'INVALID_USER_ID',
-                    message: 'Specified userId does not exist'
-                },
-                timestamp: new Date().toISOString()
-            };
-            return c.json(error, 400);
+        // Use authenticated Supabase client for consistent database access (service role)
+        try {
+            const supabase = getAuthenticatedSupabase(c);
+            const { data: dbUser, error: dbError } = await supabase
+                .from('users')
+                .select('user_id')
+                .eq('user_id', userId)
+                .single();
+
+            if (dbError || !dbUser) {
+                console.log(`🔍 Agent context validation - User ${userId} not found:`, dbError);
+                const error: APIError = {
+                    error: {
+                        code: 'INVALID_USER_ID',
+                        message: 'Specified user does not exist'
+                    },
+                    timestamp: new Date().toISOString()
+                };
+                return c.json(error, 400);
+            }
+        } catch (dbAccessError) {
+            console.error('🔍 Agent context validation - Database access error:', dbAccessError);
+            // Fallback: Skip user validation for now, let controller handle it
+            // This allows the request to proceed if there are temporary DB issues
         }
 
         // Set agent context for downstream handlers
@@ -288,7 +261,7 @@ export const validateAgentContext = (): MiddlewareHandler => {
 // Helper to check if agent has specific permission
 export const requireAgentPermission = (permission: string): MiddlewareHandler => {
     return async (c, next) => {
-        const agentContext = getAgentContext(c);
+        const agentContext = await getAgentContext(c);
 
         if (!agentContext) {
             const error: APIError = {

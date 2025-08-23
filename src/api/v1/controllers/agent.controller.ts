@@ -2,7 +2,7 @@ import type { Context } from 'hono';
 import { v4 as uuidv4 } from 'uuid';
 import { env } from 'hono/adapter';
 import jwt from 'jsonwebtoken';
-import { getSupabase, getAgentContext, getAuthenticatedSupabase, getAgentInfo } from '../../../middleware/index';
+import { getAgentContext, getAuthenticatedSupabase, getAgentInfo, getRequestBody } from '../../../middleware/index';
 import { TokenEncryption } from '../../../utils/token-encryption';
 import { EnvironmentConfig } from '../../../utils/environment-config';
 import { globalHealthMonitor } from '../../../utils/health-monitor';
@@ -12,6 +12,7 @@ import {
     APIError,
     UserProgress,
     DatabaseLearningSession,
+    DatabaseUserFlashCard,
 } from '../../../types/index';
 
 type EncryptionEnv = {
@@ -25,9 +26,12 @@ export class AgentController {
      * Get encrypted user JWT token for agent to use
      */
     static async getUserToken(c: Context) {
-        const { room_name, user_id, agent_id } = await c.req.json();
+        // Get the pre-parsed request body from middleware to avoid double-reading JSON
+        const { room_name, user_id, agent_id } = getRequestBody(c);
         const agentContext = await getAgentContext(c);
-        const supabase = getSupabase(c);
+
+        // Use authenticated Supabase client with agent JWT instead of anonymous client
+        const supabase = getAuthenticatedSupabase(c);
 
         if (!agentContext) {
             const error: APIError = {
@@ -87,61 +91,53 @@ export class AgentController {
         }
 
         try {
-            // Get user's current session token by looking up user in database
-            let { data: user, error: userError } = await supabase
+            // Get environment-specific configuration first
+            const envConfig = EnvironmentConfig.getInstance();
+
+            // Log detailed database connection info
+
+            // Try to get a simple count first to test RLS
+            const { count: totalUsers, error: countError } = await supabase
                 .from('users')
-                .select('user_id, email')
+                .select('*', { count: 'exact', head: true });
+
+
+            // Test JWT payload
+            try {
+                const { data: jwtDebug } = await supabase.rpc('debug_current_jwt');
+            } catch (jwtError) {
+            }
+
+            // Get user's current session token by looking up user in database
+            const { data: user, error: userError } = await supabase
+                .from('users')
+                .select('user_id, email, display_name, avatar_url')
                 .eq('user_id', user_id)
                 .single();
 
-            // If user doesn't exist, auto-create them
             if (userError || !user) {
-                console.log(`User ${user_id} not found, auto-creating user record...`);
-                
-                try {
-                    const { data: newUser, error: createError } = await supabase
-                        .from('users')
-                        .insert({
-                            user_id: user_id,
-                            email: null, // Will be populated later if available
-                            display_name: null,
-                            avatar_url: null
-                        })
-                        .select('user_id, email')
-                        .single();
+                console.error(`❌ User ${user_id} not found in database. Error:`, userError);
 
-                    if (createError) {
-                        console.error('Failed to auto-create user:', createError);
-                        const error: APIError = {
-                            error: {
-                                code: 'USER_CREATION_FAILED',
-                                message: 'Failed to create user record'
-                            },
-                            timestamp: new Date().toISOString()
-                        };
-                        return c.json(error, 500);
-                    }
 
-                    user = newUser;
-                    console.log(`Successfully auto-created user: ${user_id}`);
-                } catch (createErr) {
-                    console.error('Error during user auto-creation:', createErr);
-                    const error: APIError = {
-                        error: {
-                            code: 'USER_CREATION_ERROR',
-                            message: 'Error occurred while creating user record'
-                        },
-                        timestamp: new Date().toISOString()
-                    };
-                    return c.json(error, 500);
-                }
+                // Let's also try a different query approach
+                const { data: allUsersTest } = await supabase
+                    .from('users')
+                    .select('user_id')
+                    .limit(3);
+
+
+                const error: APIError = {
+                    error: {
+                        code: 'USER_NOT_FOUND',
+                        message: 'User not found in database - please ensure user is properly registered',
+                        details: userError?.message
+                    },
+                    timestamp: new Date().toISOString()
+                };
+                return c.json(error, 404);
             }
 
-            // Get environment-specific configuration
-            const envConfig = EnvironmentConfig.getInstance();
             const config = envConfig.getConfig();
-            
-            console.log(`Agent token request in ${config.environment} environment`);
 
             if (!config.agentTokenSecret) {
                 console.error(`No encryption secret found for ${config.environment} environment`);
@@ -160,7 +156,7 @@ export class AgentController {
             const supabaseEnv = env<any>(c);
             const supabaseUrl = supabaseEnv.VITE_SUPABASE_URL ?? import.meta.env.VITE_SUPABASE_URL;
             const supabaseAnonKey = supabaseEnv.VITE_SUPABASE_ANON_KEY ?? import.meta.env.VITE_SUPABASE_ANON_KEY;
-            
+
             if (!supabaseUrl || !supabaseAnonKey) {
                 console.error('Supabase configuration missing for JWT generation');
                 const error: APIError = {
@@ -173,22 +169,8 @@ export class AgentController {
                 return c.json(error, 500);
             }
 
-            // Get user data for JWT generation (use the user we just verified/created)
-            const userData = user; // We already have the user data from above
-            
-            // Fetch additional user data if needed
-            if (!userData.display_name && !userData.avatar_url) {
-                const { data: fullUserData } = await supabase
-                    .from('users')
-                    .select('user_id, email, display_name, avatar_url')
-                    .eq('user_id', user_id)
-                    .single();
-                
-                if (fullUserData) {
-                    userData.display_name = fullUserData.display_name;
-                    userData.avatar_url = fullUserData.avatar_url;
-                }
-            }
+            // Use the user data we just retrieved
+            const userData = user;
 
             // Generate a proper JWT token for the user that can be used with existing auth middleware
             const userJwtPayload = {
@@ -217,12 +199,10 @@ export class AgentController {
             }
 
             const userJWT = jwt.sign(userJwtPayload, config.jwtSecret);
-            
+
             // Encrypt the user's JWT using environment-specific secret
             const encryptedToken = TokenEncryption.encrypt(userJWT, config.agentTokenSecret);
 
-            // Log agent token request for audit
-            console.log(`Agent ${agent_id} requested user token for user ${user_id} in room ${room_name}`);
 
             return c.json({
                 encrypted_token: encryptedToken,
@@ -233,12 +213,12 @@ export class AgentController {
                 issued_to: agent_id,
                 environment: config.environment,
                 agent_context_initialized: agentContext.isAutoInitialized || false,
-                user_auto_created: !user.email // Indication that user was just created
+                user_found: true
             });
 
         } catch (err) {
             console.error('Agent user token retrieval error:', err);
-            
+
             // Check for specific error types
             if (err instanceof Error) {
                 if (err.message.includes('Token encryption failed') || err.message.includes('Token decryption failed')) {
@@ -251,7 +231,7 @@ export class AgentController {
                     };
                     return c.json(error, 500);
                 }
-                
+
                 if (err.message.includes('JWT')) {
                     const error: APIError = {
                         error: {
@@ -263,7 +243,7 @@ export class AgentController {
                     return c.json(error, 500);
                 }
             }
-            
+
             const error: APIError = {
                 error: {
                     code: 'SERVER_ERROR',
@@ -329,7 +309,7 @@ export class AgentController {
         } catch (err) {
             // Record failed request
             globalHealthMonitor.recordRequest(false, Date.now() - startTime);
-            
+
             console.error('Agent progress update error:', err);
             const error: APIError = {
                 error: {
@@ -349,7 +329,7 @@ export class AgentController {
         const sessionData = await c.req.json();
         const agentContext = await getAgentContext(c);
         const agentInfo = getAgentInfo(c);
-        const supabase = getSupabase(c);
+        const supabase = getAuthenticatedSupabase(c);
         const sessionId = sessionData.sessionId || uuidv4();
 
         if (!agentContext) {
@@ -428,13 +408,86 @@ export class AgentController {
     }
 
     /**
+     * Create a flash card for a user
+     */
+    static async createUserFlashCard(c: Context) {
+        const flashCardData = await c.req.json();
+        const agentContext = await getAgentContext(c);
+        const agentInfo = getAgentInfo(c);
+        const supabase = getAuthenticatedSupabase(c);
+
+        if (!agentContext) {
+            const error: APIError = {
+                error: {
+                    code: 'CONTEXT_INITIALIZATION_FAILED',
+                    message: 'Failed to initialize agent context'
+                },
+                timestamp: new Date().toISOString()
+            };
+            return c.json(error, 500);
+        }
+
+        try {
+            // Create the flash card
+            const newFlashCard: Omit<DatabaseUserFlashCard, 'id' | 'created_at'> = {
+                user_id: flashCardData.userId,
+                card_id: flashCardData.cardId,
+                card_type: flashCardData.cardType,
+                card_data: flashCardData.cardData,
+                created_by: 'agent' as const,
+                agent_id: agentInfo.agentId || agentContext.agentId,
+            };
+
+            const { data: createdFlashCard, error: flashCardError } = await supabase
+                .from('user_flash_cards')
+                .insert(newFlashCard)
+                .select('card_id, created_at')
+                .single();
+
+            if (flashCardError) {
+                console.error('Flash card creation error:', flashCardError);
+                const error: APIError = {
+                    error: {
+                        code: 'FLASH_CARD_CREATION_FAILED',
+                        message: 'Failed to create flash card'
+                    },
+                    timestamp: new Date().toISOString()
+                };
+                return c.json(error, 500);
+            }
+
+            // Log agent action for audit
+            console.log(`Flash card created by agent ${agentInfo.agentId || agentContext.agentId} for user ${flashCardData.userId}`);
+
+            return c.json({
+                success: true,
+                card_id: createdFlashCard.card_id,
+                created_at: createdFlashCard.created_at,
+                created_by: 'agent' as const,
+                agent_id: agentInfo.agentId || agentContext.agentId,
+                agent_context_initialized: agentContext.isAutoInitialized || false
+            });
+        } catch (err) {
+            console.error('Agent flash card creation error:', err);
+            const error: APIError = {
+                error: {
+                    code: 'SERVER_ERROR',
+                    message: 'Internal server error'
+                },
+                timestamp: new Date().toISOString()
+            };
+            return c.json(error, 500);
+        }
+    }
+
+    /**
      * Get user context for agent personalization
      */
     static async getUserContext(c: Context) {
         const userId = c.req.param('user_id');
         const agentContext = await getAgentContext(c);
         const agentInfo = getAgentInfo(c);
-        const supabase = getSupabase(c);
+        const supabase = getAuthenticatedSupabase(c);
         const startTime = Date.now();
 
         if (!agentContext) {
@@ -450,38 +503,18 @@ export class AgentController {
 
         try {
             const cacheKey = `user_context:${userId}`;
-            
+
             // Try to get from cache first
             const userContext = await globalCache.getOrSet(
                 cacheKey,
                 async () => {
                     let { data, error } = await supabase
                         .from('user_contexts')
-                        .select('*')
+                        .select('*, users!user_id(display_name)')
                         .eq('user_id', userId)
                         .single();
 
-                    // If user context doesn't exist, auto-create it
-                    if (error && error.code === 'PGRST116') { // No rows returned
-                        console.log(`User context for ${userId} not found, auto-creating...`);
-                        
-                        const { data: newContext, error: createError } = await supabase
-                            .from('user_contexts')
-                            .insert({
-                                user_id: userId
-                                // preferences and progress will use default values from schema
-                            })
-                            .select('*')
-                            .single();
-
-                        if (createError) {
-                            console.error('Failed to auto-create user context:', createError);
-                            throw new Error(`Failed to create user context: ${createError.message}`);
-                        }
-
-                        console.log(`Successfully auto-created user context for ${userId}`);
-                        data = newContext;
-                    } else if (error) {
+                    if (error) {
                         throw new Error(`Database error: ${error.message}`);
                     }
 
@@ -495,8 +528,11 @@ export class AgentController {
 
             // Log agent action for audit
             console.log(`User context accessed by agent ${agentInfo.agentId || agentContext.agentId} for user ${userId}`);
+            console.log(userContext)
+            console.log(userContext.users)
 
             return c.json({
+                name: userContext.users?.display_name,
                 user_id: userContext.user_id,
                 preferences: userContext.preferences,
                 progress: userContext.progress,
@@ -513,9 +549,9 @@ export class AgentController {
         } catch (err) {
             // Record failed request
             globalHealthMonitor.recordRequest(false, Date.now() - startTime);
-            
+
             console.error('Agent context retrieval error:', err);
-            
+
             if (err instanceof Error && err.message.includes('not found')) {
                 const apiError: APIError = {
                     error: {
@@ -562,9 +598,9 @@ export class AgentController {
         } catch (error) {
             // Record failed health check
             globalHealthMonitor.recordRequest(false, Date.now() - startTime);
-            
+
             console.error('Health check failed:', error);
-            
+
             const errorResponse: APIError = {
                 error: {
                     code: 'HEALTH_CHECK_FAILED',
