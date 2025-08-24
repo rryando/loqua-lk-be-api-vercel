@@ -6,6 +6,11 @@ import {
     updateUserContextRoute,
     getUserProgressRoute
 } from '../openapi/users-openapi';
+import {
+    getUserPronunciationEvaluationsRoute,
+    getUserEvaluatedPhrasesRoute,
+    getUserPronunciationAudioRoute,
+} from '../openapi/users-pronunciation-openapi';
 
 const users = new OpenAPIHono();
 
@@ -37,6 +42,33 @@ users.openapi(getUserProgressRoute, async (c) => {
     if (authResult) return authResult;
 
     return UsersController.getUserProgress(c);
+});
+
+// GET /api/users/{user_id}/pronunciation-evaluations
+users.openapi(getUserPronunciationEvaluationsRoute, async (c) => {
+    // Apply auth middleware
+    const authResult = await requireAuth()(c, async () => { });
+    if (authResult) return authResult;
+
+    return UsersController.getPronunciationEvaluations(c);
+});
+
+// GET /api/users/{user_id}/pronunciation-evaluations/phrases
+users.openapi(getUserEvaluatedPhrasesRoute, async (c) => {
+    // Apply auth middleware
+    const authResult = await requireAuth()(c, async () => { });
+    if (authResult) return authResult;
+
+    return UsersController.getEvaluatedPhrases(c);
+});
+
+// POST /api/users/{user_id}/pronunciation-evaluations/{evaluation_id}/listen
+users.openapi(getUserPronunciationAudioRoute, async (c) => {
+    // Apply auth middleware
+    const authResult = await requireAuth()(c, async () => { });
+    if (authResult) return authResult;
+
+    return UsersController.generatePronunciationAudio(c);
 });
 
 export default users;

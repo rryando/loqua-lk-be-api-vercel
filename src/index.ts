@@ -138,6 +138,38 @@ app.openapi(healthRoute, async (c) => {
 // Setup API documentation
 setupDocumentation(app);
 
+// Audio file serving endpoint
+app.get('/audio/:filename', async (c) => {
+  const filename = c.req.param('filename');
+  
+  // Simple security check for filename
+  if (!filename.match(/^[a-f0-9]{32}\.mp3$/)) {
+    const error: APIError = {
+      error: {
+        code: 'INVALID_AUDIO_FILE',
+        message: 'Invalid audio file request'
+      },
+      timestamp: new Date().toISOString()
+    };
+    return c.json(error, 400);
+  }
+
+  try {
+    // This will be handled by the deployment environment (Node.js/Bun)
+    // For now, return a placeholder response that indicates the endpoint exists
+    return c.text('Audio file serving endpoint - implementation depends on runtime environment', 501);
+  } catch (error) {
+    const apiError: APIError = {
+      error: {
+        code: 'AUDIO_FILE_ERROR',
+        message: 'Error serving audio file'
+      },
+      timestamp: new Date().toISOString()
+    };
+    return c.json(apiError, 500);
+  }
+});
+
 // API routes (actual implementations)
 app.route('/api/users', usersRoutes);
 app.route('/api/sessions', sessionsRoutes);

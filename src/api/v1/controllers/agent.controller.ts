@@ -615,6 +615,317 @@ export class AgentController {
     }
 
     /**
+     * Store pronunciation evaluation result
+     */
+    static async storePronunciationEvaluation(c: Context) {
+        const evaluationData = await c.req.json();
+        const agentContext = await getAgentContext(c);
+        const agentInfo = getAgentInfo(c);
+        const supabase = getAuthenticatedSupabase(c);
+        const startTime = Date.now();
+
+        if (!agentContext) {
+            const error: APIError = {
+                error: {
+                    code: 'CONTEXT_INITIALIZATION_FAILED',
+                    message: 'Failed to initialize agent context'
+                },
+                timestamp: new Date().toISOString()
+            };
+            return c.json(error, 500);
+        }
+
+        try {
+            const { userId, evaluation } = evaluationData;
+
+            // Application-level duplicate check (same user + kanji within 24 hours)
+            const oneDayAgo = new Date();
+            oneDayAgo.setDate(oneDayAgo.getDate() - 1);
+
+            const { data: existingEvaluation } = await supabase
+                .from('pronunciation_evaluations')
+                .select('id, created_at')
+                .eq('user_id', userId)
+                .eq('kanji', evaluation.kanji)
+                .gte('created_at', oneDayAgo.toISOString())
+                .single();
+
+            if (existingEvaluation) {
+                const error: APIError = {
+                    error: {
+                        code: 'DUPLICATE_EVALUATION',
+                        message: 'Evaluation for this phrase already exists today'
+                    },
+                    timestamp: new Date().toISOString()
+                };
+                return c.json(error, 409);
+            }
+
+            // Create pronunciation evaluation
+            const newEvaluation = {
+                user_id: userId,
+                kanji: evaluation.kanji,
+                romaji: evaluation.romaji,
+                translation: evaluation.translation,
+                topic: evaluation.topic,
+                user_pronunciation: evaluation.user_pronunciation,
+                evaluation_score: evaluation.evaluation_score || null,
+                evaluation_feedback: evaluation.evaluation_feedback || null,
+                evaluation_details: evaluation.evaluation_details || null,
+            };
+
+            const { data: createdEvaluation, error: insertError } = await supabase
+                .from('pronunciation_evaluations')
+                .insert(newEvaluation)
+                .select('id, created_at')
+                .single();
+
+            if (insertError) {
+                console.error('Pronunciation evaluation creation error:', insertError);
+                const error: APIError = {
+                    error: {
+                        code: 'INVALID_EVALUATION_DATA',
+                        message: 'Required fields missing: kanji, romaji, translation'
+                    },
+                    timestamp: new Date().toISOString()
+                };
+                return c.json(error, 400);
+            }
+
+            // Record successful request
+            globalHealthMonitor.recordRequest(true, Date.now() - startTime);
+
+            // Log agent action for audit
+            console.log(`Pronunciation evaluation stored by agent ${agentInfo.agentId || agentContext.agentId} for user ${userId}`);
+
+            return c.json({
+                success: true,
+                evaluation_id: createdEvaluation.id,
+                created_at: createdEvaluation.created_at,
+                message: 'Pronunciation evaluation stored successfully'
+            });
+
+        } catch (err) {
+            // Record failed request
+            globalHealthMonitor.recordRequest(false, Date.now() - startTime);
+
+            console.error('Agent pronunciation evaluation storage error:', err);
+            const error: APIError = {
+                error: {
+                    code: 'SERVER_ERROR',
+                    message: 'Internal server error'
+                },
+                timestamp: new Date().toISOString()
+            };
+            return c.json(error, 500);
+        }
+    }
+
+    /**
+     * Get user's pronunciation evaluations
+     */
+    static async getPronunciationEvaluations(c: Context) {
+        const userId = c.req.param('user_id');
+        const { topic, limit, offset, since_date } = c.req.query();
+        const agentContext = await getAgentContext(c);
+        const agentInfo = getAgentInfo(c);
+        const supabase = getAuthenticatedSupabase(c);
+        const startTime = Date.now();
+
+        if (!agentContext) {
+            const error: APIError = {
+                error: {
+                    code: 'CONTEXT_INITIALIZATION_FAILED',
+                    message: 'Failed to initialize agent context'
+                },
+                timestamp: new Date().toISOString()
+            };
+            return c.json(error, 500);
+        }
+
+        try {
+            let query = supabase
+                .from('pronunciation_evaluations')
+                .select('*', { count: 'exact' })
+                .eq('user_id', userId)
+                .order('created_at', { ascending: false });
+
+            if (topic) {
+                query = query.eq('topic', topic);
+            }
+
+            if (since_date) {
+                query = query.gte('created_at', since_date);
+            }
+
+            const limitNum = parseInt(limit as string) || 50;
+            const offsetNum = parseInt(offset as string) || 0;
+
+            query = query.range(offsetNum, offsetNum + limitNum - 1);
+
+            const { data: evaluations, error: queryError, count } = await query;
+
+            if (queryError) {
+                console.error('Pronunciation evaluations query error:', queryError);
+                const error: APIError = {
+                    error: {
+                        code: 'SERVER_ERROR',
+                        message: 'Internal server error'
+                    },
+                    timestamp: new Date().toISOString()
+                };
+                return c.json(error, 500);
+            }
+
+            if (!evaluations || evaluations.length === 0) {
+                const error: APIError = {
+                    error: {
+                        code: 'NO_EVALUATIONS_FOUND',
+                        message: 'No pronunciation evaluations found for user'
+                    },
+                    timestamp: new Date().toISOString()
+                };
+                return c.json(error, 404);
+            }
+
+            // Record successful request
+            globalHealthMonitor.recordRequest(true, Date.now() - startTime);
+
+            // Log agent action for audit
+            console.log(`Pronunciation evaluations accessed by agent ${agentInfo.agentId || agentContext.agentId} for user ${userId}`);
+
+            return c.json({
+                success: true,
+                evaluations: evaluations,
+                total_count: count || 0,
+                has_more: (count || 0) > offsetNum + limitNum
+            });
+
+        } catch (err) {
+            // Record failed request
+            globalHealthMonitor.recordRequest(false, Date.now() - startTime);
+
+            console.error('Agent pronunciation evaluations retrieval error:', err);
+            const error: APIError = {
+                error: {
+                    code: 'SERVER_ERROR',
+                    message: 'Internal server error'
+                },
+                timestamp: new Date().toISOString()
+            };
+            return c.json(error, 500);
+        }
+    }
+
+    /**
+     * Get evaluated phrases for LLM context (cached)
+     */
+    static async getEvaluatedPhrases(c: Context) {
+        const userId = c.req.param('user_id');
+        const { topic, days_back } = c.req.query();
+        const agentContext = await getAgentContext(c);
+        const agentInfo = getAgentInfo(c);
+        const supabase = getAuthenticatedSupabase(c);
+        const startTime = Date.now();
+
+        if (!agentContext) {
+            const error: APIError = {
+                error: {
+                    code: 'CONTEXT_INITIALIZATION_FAILED',
+                    message: 'Failed to initialize agent context'
+                },
+                timestamp: new Date().toISOString()
+            };
+            return c.json(error, 500);
+        }
+
+        try {
+            const daysBackNum = parseInt(days_back as string) || 7;
+            const dateThreshold = new Date();
+            dateThreshold.setDate(dateThreshold.getDate() - daysBackNum);
+
+            const cacheKey = `evaluated_phrases:${userId}:${topic || 'all'}:${daysBackNum}`;
+
+            // Long-term caching (30 minutes)
+            const evaluatedPhrases = await globalCache.getOrSet(
+                cacheKey,
+                async () => {
+                    let query = supabase
+                        .from('pronunciation_evaluations')
+                        .select('kanji, romaji, topic, created_at, evaluation_score')
+                        .eq('user_id', userId)
+                        .gte('created_at', dateThreshold.toISOString())
+                        .order('created_at', { ascending: false });
+
+                    if (topic) {
+                        query = query.eq('topic', topic);
+                    }
+
+                    const { data: evaluations, error: queryError } = await query;
+
+                    if (queryError) {
+                        throw new Error(`Database error: ${queryError.message}`);
+                    }
+
+                    if (!evaluations || evaluations.length === 0) {
+                        return [];
+                    }
+
+                    // Group by kanji to get best score and latest evaluation
+                    const phrasesMap = new Map();
+
+                    evaluations.forEach(evaluation => {
+                        const key = evaluation.kanji;
+                        const existing = phrasesMap.get(key);
+                        
+                        if (!existing || 
+                            new Date(evaluation.created_at) > new Date(existing.last_evaluated) ||
+                            (evaluation.evaluation_score && (!existing.best_score || evaluation.evaluation_score > existing.best_score))) {
+                            
+                            phrasesMap.set(key, {
+                                kanji: evaluation.kanji,
+                                romaji: evaluation.romaji,
+                                topic: evaluation.topic,
+                                last_evaluated: evaluation.created_at,
+                                best_score: evaluation.evaluation_score || existing?.best_score || null
+                            });
+                        }
+                    });
+
+                    return Array.from(phrasesMap.values());
+                },
+                1800000 // 30 minutes cache
+            );
+
+            // Record successful request
+            globalHealthMonitor.recordRequest(true, Date.now() - startTime);
+
+            // Log agent action for audit
+            console.log(`Evaluated phrases accessed by agent ${agentInfo.agentId || agentContext.agentId} for user ${userId}`);
+
+            return c.json({
+                success: true,
+                evaluated_phrases: evaluatedPhrases,
+                count: evaluatedPhrases.length
+            });
+
+        } catch (err) {
+            // Record failed request
+            globalHealthMonitor.recordRequest(false, Date.now() - startTime);
+
+            console.error('Agent evaluated phrases retrieval error:', err);
+            const error: APIError = {
+                error: {
+                    code: 'SERVER_ERROR',
+                    message: 'Internal server error'
+                },
+                timestamp: new Date().toISOString()
+            };
+            return c.json(error, 500);
+        }
+    }
+
+    /**
      * Helper method to update user progress after session creation
      */
     private static async updateUserProgress(supabase: any, sessionData: any, sessionId: string) {

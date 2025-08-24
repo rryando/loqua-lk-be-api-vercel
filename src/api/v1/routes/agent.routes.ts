@@ -13,6 +13,9 @@ import {
     agentUserTokenRoute,
     notLoggedInHealthRoute,
     agentCreateUserFlashCardRoute,
+    agentStorePronunciationEvaluationRoute,
+    agentGetPronunciationEvaluationsRoute,
+    agentGetEvaluatedPhrasesRoute,
 } from '../openapi/agent-openapi';
 
 const agent = new OpenAPIHono();
@@ -56,17 +59,6 @@ agent.openapi(agentUserContextRoute, async (c) => {
     return AgentController.getUserContext(c);
 });
 
-
-// POST /agent/user/{user_id}/create_flash_card - Create flash card for user
-agent.openapi(agentCreateUserFlashCardRoute, async (c) => {
-    // Apply middleware manually
-    await agentAuthMiddleware()(c, async () => { });
-    await validateAgentContext()(c, async () => { });
-    await requireAgentPermission('user.create_flash_card')(c, async () => { });
-
-    return AgentController.createUserFlashCard(c);
-});
-
 // POST /agent/health - Agent health check
 agent.openapi(agentHealthRoute, async (c) => {
     // Apply middleware manually
@@ -83,5 +75,31 @@ agent.openapi(notLoggedInHealthRoute, async (c) => {
     });
 });
 
+// POST /agent/pronunciation-evaluations - Store pronunciation evaluation
+agent.openapi(agentStorePronunciationEvaluationRoute, async (c) => {
+    // Apply middleware manually
+    await agentAuthMiddleware()(c, async () => { });
+    await validateAgentContext()(c, async () => { });
+
+    return AgentController.storePronunciationEvaluation(c);
+});
+
+// GET /agent/pronunciation-evaluations/{user_id} - Get user pronunciation evaluations
+agent.openapi(agentGetPronunciationEvaluationsRoute, async (c) => {
+    // Apply middleware manually
+    await agentAuthMiddleware()(c, async () => { });
+    await validateAgentContext()(c, async () => { });
+
+    return AgentController.getPronunciationEvaluations(c);
+});
+
+// GET /agent/pronunciation-evaluations/{user_id}/phrases - Get evaluated phrases
+agent.openapi(agentGetEvaluatedPhrasesRoute, async (c) => {
+    // Apply middleware manually
+    await agentAuthMiddleware()(c, async () => { });
+    await validateAgentContext()(c, async () => { });
+
+    return AgentController.getEvaluatedPhrases(c);
+});
 
 export default agent;

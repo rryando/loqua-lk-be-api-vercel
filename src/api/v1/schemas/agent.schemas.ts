@@ -102,3 +102,75 @@ export const AgentHealthCheckResponseSchema = z.object({
     permissions: z.array(z.string()),
     timestamp: z.string(),
 });
+
+// Pronunciation Evaluation Schemas
+export const PronunciationEvaluationSchema = z.object({
+    kanji: z.string().min(1, 'Kanji is required'),
+    romaji: z.string().min(1, 'Romaji is required'),
+    translation: z.string().min(1, 'Translation is required'),
+    topic: z.string().min(1, 'Topic is required'),
+    user_pronunciation: z.string().min(1, 'User pronunciation is required'),
+    evaluation_score: z.number().int().min(0).max(100).optional(),
+    evaluation_feedback: z.string().optional(),
+    evaluation_details: z.record(z.any()).optional(),
+});
+
+export const StorePronunciationEvaluationSchema = z.object({
+    userId: z.string().min(1, 'User ID is required'),
+    sessionId: z.string().optional(),
+    evaluation: PronunciationEvaluationSchema,
+});
+
+export const GetPronunciationEvaluationsQuerySchema = z.object({
+    topic: z.string().optional(),
+    limit: z.coerce.number().positive().max(100).default(50),
+    offset: z.coerce.number().nonnegative().default(0),
+    since_date: z.string().datetime().optional(),
+});
+
+export const GetEvaluatedPhrasesQuerySchema = z.object({
+    topic: z.string().optional(),
+    days_back: z.coerce.number().positive().max(30).default(7),
+});
+
+// Pronunciation Evaluation Response Schemas
+export const StorePronunciationEvaluationResponseSchema = z.object({
+    success: z.literal(true),
+    evaluation_id: z.string(),
+    created_at: z.string(),
+    message: z.string(),
+});
+
+export const PronunciationEvaluationItemSchema = z.object({
+    id: z.string(),
+    kanji: z.string(),
+    romaji: z.string(),
+    translation: z.string(),
+    topic: z.string(),
+    user_pronunciation: z.string(),
+    evaluation_score: z.number().nullable(),
+    evaluation_feedback: z.string().nullable(),
+    evaluation_details: z.record(z.any()).nullable(),
+    created_at: z.string(),
+});
+
+export const GetPronunciationEvaluationsResponseSchema = z.object({
+    success: z.literal(true),
+    evaluations: z.array(PronunciationEvaluationItemSchema),
+    total_count: z.number(),
+    has_more: z.boolean(),
+});
+
+export const EvaluatedPhraseSchema = z.object({
+    kanji: z.string(),
+    romaji: z.string(),
+    topic: z.string(),
+    last_evaluated: z.string(),
+    best_score: z.number().nullable(),
+});
+
+export const GetEvaluatedPhrasesResponseSchema = z.object({
+    success: z.literal(true),
+    evaluated_phrases: z.array(EvaluatedPhraseSchema),
+    count: z.number(),
+});

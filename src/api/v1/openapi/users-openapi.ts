@@ -8,6 +8,12 @@ import {
     APIErrorSchema,
     createAuthenticatedRoute,
 } from '../../../lib/openapi';
+import {
+    UserGetPronunciationEvaluationsQuerySchema,
+    UserGetPronunciationEvaluationsResponseSchema,
+    UserGetEvaluatedPhrasesQuerySchema,
+    UserGetEvaluatedPhrasesResponseSchema,
+} from '../schemas/users.schemas';
 
 // Get User Context Route
 export const getUserContextRoute = createRoute(

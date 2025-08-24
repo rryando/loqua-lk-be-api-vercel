@@ -85,3 +85,65 @@ export const ProgressAnalyticsSchema = z.object({
         target: z.number(),
     })),
 });
+
+// User Pronunciation Evaluation Schemas
+export const UserGetPronunciationEvaluationsQuerySchema = z.object({
+    topic: z.string().optional(),
+    limit: z.coerce.number().positive().max(100).default(50),
+    offset: z.coerce.number().nonnegative().default(0),
+    since_date: z.string().datetime().optional(),
+});
+
+export const UserGetEvaluatedPhrasesQuerySchema = z.object({
+    topic: z.string().optional(),
+    days_back: z.coerce.number().positive().max(30).default(7),
+});
+
+// User Pronunciation Evaluation Response Schemas
+export const UserPronunciationEvaluationItemSchema = z.object({
+    id: z.string(),
+    kanji: z.string(),
+    romaji: z.string(),
+    translation: z.string(),
+    topic: z.string(),
+    user_pronunciation: z.string(),
+    evaluation_score: z.number().nullable(),
+    evaluation_feedback: z.string().nullable(),
+    evaluation_details: z.record(z.any()).nullable(),
+    created_at: z.string(),
+});
+
+export const UserGetPronunciationEvaluationsResponseSchema = z.object({
+    success: z.literal(true),
+    evaluations: z.array(UserPronunciationEvaluationItemSchema),
+    total_count: z.number(),
+    has_more: z.boolean(),
+});
+
+export const UserEvaluatedPhraseSchema = z.object({
+    id: z.string(),
+    phrase: z.string(), // romaji pronunciation
+    kanji: z.string(),
+    translation: z.string(),
+    topic: z.string(),
+    latest_evaluation_date: z.string(),
+    best_score: z.number().nullable(),
+    evaluation_count: z.number(),
+});
+
+export const UserGetEvaluatedPhrasesResponseSchema = z.object({
+    success: z.literal(true),
+    evaluated_phrases: z.array(UserEvaluatedPhraseSchema),
+    count: z.number(),
+});
+
+// User Pronunciation Audio Response Schema
+export const UserPronunciationAudioResponseSchema = z.object({
+    success: z.literal(true),
+    audio_url: z.string().describe('URL path to the cached audio file on the server'),
+    audio_data: z.string().describe('Complete data URL with base64 encoded MP3 audio (data:audio/mp3;base64,...)'),
+    audio_base64: z.string().describe('Raw base64 encoded MP3 audio data without MIME prefix'),
+    kanji: z.string().describe('The original Japanese text'),
+    romaji: z.string().describe('The romanized pronunciation'),
+    cached: z.boolean().describe('Whether the audio was retrieved from cache or newly generated'),
+});

@@ -10,6 +10,7 @@ import {
     DatabaseUserContext,
     ProgressAnalytics
 } from '../../../types/index';
+import { pronunciationService, EnhancementRequest } from '../../../services/pronunciation.service';
 
 export class UsersController {
     /**
@@ -352,6 +353,373 @@ export class UsersController {
             return c.json(response);
         } catch (err) {
             console.error('Get progress error:', err);
+            const error: APIError = {
+                error: {
+                    code: 'SERVER_ERROR',
+                    message: 'Internal server error'
+                },
+                timestamp: new Date().toISOString()
+            };
+            return c.json(error, 500);
+        }
+    }
+
+    /**
+     * Get user's pronunciation evaluations (user endpoint)
+     */
+    static async getPronunciationEvaluations(c: Context) {
+        const requestedUserId = c.req.param('user_id');
+        const currentUserId = extractUserId(c);
+        const { topic, limit, offset, since_date } = c.req.query();
+
+        // Check if user is requesting their own evaluations
+        if (requestedUserId !== currentUserId) {
+            const error: APIError = {
+                error: {
+                    code: 'INSUFFICIENT_PERMISSIONS',
+                    message: 'You can only access your own pronunciation evaluations'
+                },
+                timestamp: new Date().toISOString()
+            };
+            return c.json(error, 403);
+        }
+
+        const supabase = getAuthenticatedSupabase(c);
+
+        try {
+            let query = supabase
+                .from('pronunciation_evaluations')
+                .select('*', { count: 'exact' })
+                .eq('user_id', requestedUserId)
+                .order('created_at', { ascending: false });
+
+            if (topic) {
+                query = query.eq('topic', topic);
+            }
+
+            if (since_date) {
+                query = query.gte('created_at', since_date);
+            }
+
+            const limitNum = parseInt(limit as string) || 50;
+            const offsetNum = parseInt(offset as string) || 0;
+
+            query = query.range(offsetNum, offsetNum + limitNum - 1);
+
+            const { data: evaluations, error: queryError, count } = await query;
+
+            if (queryError) {
+                console.error('Pronunciation evaluations query error:', queryError);
+                const error: APIError = {
+                    error: {
+                        code: 'DATABASE_ERROR',
+                        message: 'Failed to retrieve pronunciation evaluations'
+                    },
+                    timestamp: new Date().toISOString()
+                };
+                return c.json(error, 500);
+            }
+
+            if (!evaluations || evaluations.length === 0) {
+                return c.json({
+                    success: true,
+                    evaluations: [],
+                    total_count: 0,
+                    has_more: false
+                });
+            }
+
+            return c.json({
+                success: true,
+                evaluations: evaluations,
+                total_count: count || 0,
+                has_more: (count || 0) > offsetNum + limitNum
+            });
+
+        } catch (err) {
+            console.error('User pronunciation evaluations retrieval error:', err);
+            const error: APIError = {
+                error: {
+                    code: 'SERVER_ERROR',
+                    message: 'Internal server error'
+                },
+                timestamp: new Date().toISOString()
+            };
+            return c.json(error, 500);
+        }
+    }
+
+    /**
+     * Get evaluated phrases for user review (user endpoint)
+     */
+    static async getEvaluatedPhrases(c: Context) {
+        const requestedUserId = c.req.param('user_id');
+        const currentUserId = extractUserId(c);
+        const { topic, days_back } = c.req.query();
+
+        // Check if user is requesting their own evaluated phrases
+        if (requestedUserId !== currentUserId) {
+            const error: APIError = {
+                error: {
+                    code: 'INSUFFICIENT_PERMISSIONS',
+                    message: 'You can only access your own evaluated phrases'
+                },
+                timestamp: new Date().toISOString()
+            };
+            return c.json(error, 403);
+        }
+
+        const supabase = getAuthenticatedSupabase(c);
+
+        try {
+            const daysBackNum = parseInt(days_back as string) || 7;
+            const dateThreshold = new Date();
+            dateThreshold.setDate(dateThreshold.getDate() - daysBackNum);
+
+            let query = supabase
+                .from('pronunciation_evaluations')
+                .select('id, kanji, romaji, translation, topic, created_at, evaluation_score')
+                .eq('user_id', requestedUserId)
+                .gte('created_at', dateThreshold.toISOString())
+                .order('created_at', { ascending: false });
+
+            if (topic) {
+                query = query.eq('topic', topic);
+            }
+
+            const { data: evaluations, error: queryError } = await query;
+
+            if (queryError) {
+                console.error('Evaluated phrases query error:', queryError);
+                const error: APIError = {
+                    error: {
+                        code: 'DATABASE_ERROR',
+                        message: 'Failed to retrieve evaluated phrases'
+                    },
+                    timestamp: new Date().toISOString()
+                };
+                return c.json(error, 500);
+            }
+
+            if (!evaluations || evaluations.length === 0) {
+                return c.json({
+                    success: true,
+                    evaluated_phrases: [],
+                    count: 0
+                });
+            }
+
+            // Group by kanji to get best score and latest evaluation
+            const phrasesMap = new Map();
+
+            evaluations.forEach(evaluation => {
+                const key = evaluation.kanji;
+                const existing = phrasesMap.get(key);
+
+                if (!existing ||
+                    new Date(evaluation.created_at) > new Date(existing.latest_evaluation_date) ||
+                    (evaluation.evaluation_score && (!existing.best_score || evaluation.evaluation_score > existing.best_score))) {
+
+                    phrasesMap.set(key, {
+                        id: evaluation.id,
+                        kanji: evaluation.kanji,
+                        romaji: evaluation.romaji,
+                        translation: evaluation.translation,
+                        topic: evaluation.topic,
+                        latest_evaluation_date: evaluation.created_at,
+                        best_score: evaluation.evaluation_score || existing?.best_score || null,
+                        evaluation_count: (existing?.evaluation_count || 0) + 1
+                    });
+                }
+            });
+
+            const evaluatedPhrases = Array.from(phrasesMap.values());
+
+            // Check if any phrases need enhancement (have dummy data)
+            const needsEnhancement = evaluatedPhrases.filter(phrase =>
+                phrase.romaji === 'pronunciation_needed' ||
+                phrase.translation === 'translation_needed'
+            );
+
+            if (needsEnhancement.length > 0) {
+                try {
+                    console.log(`Enhancing ${needsEnhancement.length} phrases with dummy data`);
+
+                    // Prepare enhancement requests
+                    const enhancementRequests: EnhancementRequest[] = needsEnhancement.map(phrase => ({
+                        kanji: phrase.kanji,
+                        currentRomaji: phrase.romaji,
+                        currentTranslation: phrase.translation
+                    }));
+
+                    // Get enhanced data from OpenAI
+                    const enhancedResults = await pronunciationService.enhancePronunciationData(enhancementRequests);
+
+                    // Update database with enhanced data
+                    for (let i = 0; i < enhancedResults.length; i++) {
+                        const enhanced = enhancedResults[i];
+                        const original = needsEnhancement[i];
+
+                        // Update the database if we got valid enhanced data
+                        if (enhanced.romaji !== 'pronunciation_needed' && enhanced.translation !== 'translation_needed') {
+                            const updateData: any = {};
+
+                            if (original.romaji === 'pronunciation_needed') {
+                                updateData.romaji = enhanced.romaji;
+                            }
+                            if (original.translation === 'translation_needed') {
+                                updateData.translation = enhanced.translation;
+                            }
+
+                            // Update the database record
+                            await supabase
+                                .from('pronunciation_evaluations')
+                                .update(updateData)
+                                .eq('user_id', requestedUserId)
+                                .eq('kanji', enhanced.kanji);
+
+                            // Update the local data
+                            const phraseIndex = evaluatedPhrases.findIndex(p => p.kanji === enhanced.kanji);
+                            if (phraseIndex !== -1) {
+                                evaluatedPhrases[phraseIndex] = {
+                                    ...evaluatedPhrases[phraseIndex],
+                                    romaji: enhanced.romaji,
+                                    translation: enhanced.translation
+                                };
+                            }
+                        }
+                    }
+
+                    console.log(`Successfully enhanced ${enhancedResults.length} phrases`);
+                } catch (enhancementError) {
+                    console.error('Enhancement failed, returning original data:', enhancementError);
+                    // Continue with original data if enhancement fails
+                }
+            }
+
+            // Map to client expected format
+            const clientFormattedPhrases = evaluatedPhrases.map((phrase, index) => ({
+                id: phrase.id,
+                phrase: phrase.romaji, // Client expects 'phrase' field for romaji
+                kanji: phrase.kanji,
+                translation: phrase.translation,
+                best_score: phrase.best_score,
+                latest_evaluation_date: phrase.latest_evaluation_date,
+                topic: phrase.topic,
+                evaluation_count: phrase.evaluation_count
+            }));
+
+            return c.json({
+                success: true,
+                evaluated_phrases: clientFormattedPhrases,
+                count: clientFormattedPhrases.length
+            });
+
+        } catch (err) {
+            console.error('User evaluated phrases retrieval error:', err);
+            const error: APIError = {
+                error: {
+                    code: 'SERVER_ERROR',
+                    message: 'Internal server error'
+                },
+                timestamp: new Date().toISOString()
+            };
+            return c.json(error, 500);
+        }
+    }
+
+    /**
+     * Generate audio for pronunciation (user endpoint)
+     */
+    static async generatePronunciationAudio(c: Context) {
+        const evaluationId = c.req.param('evaluation_id');
+        const currentUserId = extractUserId(c);
+
+        const supabase = getAuthenticatedSupabase(c);
+
+        try {
+            // Get the evaluation record to ensure user owns it and get romaji/kanji
+            const { data: evaluation, error: queryError } = await supabase
+                .from('pronunciation_evaluations')
+                .select('user_id, kanji, romaji, audio_url')
+                .eq('id', evaluationId)
+                .single();
+
+            if (queryError || !evaluation) {
+                const error: APIError = {
+                    error: {
+                        code: 'EVALUATION_NOT_FOUND',
+                        message: 'Pronunciation evaluation not found'
+                    },
+                    timestamp: new Date().toISOString()
+                };
+                return c.json(error, 404);
+            }
+
+            // Check if user owns this evaluation
+            if (evaluation.user_id !== currentUserId) {
+                const error: APIError = {
+                    error: {
+                        code: 'INSUFFICIENT_PERMISSIONS',
+                        message: 'You can only access your own pronunciation evaluations'
+                    },
+                    timestamp: new Date().toISOString()
+                };
+                return c.json(error, 403);
+            }
+
+            // Check for dummy data
+            if (evaluation.romaji === 'pronunciation_needed') {
+                const error: APIError = {
+                    error: {
+                        code: 'PRONUNCIATION_DATA_UNAVAILABLE',
+                        message: 'Pronunciation data not available for this evaluation'
+                    },
+                    timestamp: new Date().toISOString()
+                };
+                return c.json(error, 400);
+            }
+
+            // Generate or get existing audio
+            try {
+                const audioResult = await pronunciationService.generateAudio(evaluation.romaji, evaluation.kanji);
+
+                // Convert buffer to base64
+                const audioBase64 = audioResult.buffer.toString('base64');
+                const audioDataUrl = `data:audio/mp3;base64,${audioBase64}`;
+
+                // Update database with audio URL if not already set
+                if (!evaluation.audio_url) {
+                    await supabase
+                        .from('pronunciation_evaluations')
+                        .update({ audio_url: audioResult.url })
+                        .eq('id', evaluationId);
+                }
+
+                return c.json({
+                    success: true,
+                    audio_url: audioResult.url,
+                    audio_data: audioDataUrl,
+                    audio_base64: audioBase64,
+                    kanji: evaluation.kanji,
+                    romaji: evaluation.romaji,
+                    cached: !!evaluation.audio_url
+                });
+
+            } catch (audioError) {
+                console.error('Audio generation failed:', audioError);
+                const error: APIError = {
+                    error: {
+                        code: 'AUDIO_GENERATION_FAILED',
+                        message: 'Failed to generate pronunciation audio'
+                    },
+                    timestamp: new Date().toISOString()
+                };
+                return c.json(error, 500);
+            }
+
+        } catch (err) {
+            console.error('User pronunciation audio generation error:', err);
             const error: APIError = {
                 error: {
                     code: 'SERVER_ERROR',
