@@ -142,7 +142,6 @@ export class PronunciationService {
                         content: prompt
                     }
                 ],
-                temperature: 0.1, // Low temperature for consistent results
             });
 
             const responseText = completion.choices[0]?.message?.content;

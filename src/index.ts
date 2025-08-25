@@ -29,7 +29,7 @@ import {
 } from './api/v1/openapi/agent-openapi';
 
 // Import actual route handlers
-import { usersRoutes, sessionsRoutes, roomsRoutes, agentRoutes } from './api/v1/routes/index';
+import { usersRoutes, sessionsRoutes, roomsRoutes, agentRoutes, conversationsRoutes } from './api/v1/routes/index';
 
 // Create OpenAPI app
 const app = createOpenAPIApp();
@@ -175,6 +175,7 @@ app.route('/api/users', usersRoutes);
 app.route('/api/sessions', sessionsRoutes);
 app.route('/api/rooms', roomsRoutes);
 app.route('/api/v1/agent', agentRoutes);
+app.route('/api/v1', conversationsRoutes);
 
 // Global error handler
 app.onError((err, c) => {
