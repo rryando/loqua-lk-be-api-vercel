@@ -131,7 +131,7 @@ export class PronunciationService {
             const prompt = this.constructEnhancementPrompt(needsEnhancement);
 
             const completion = await this.openai.chat.completions.create({
-                model: "gpt-4o-mini", // Cost-effective model
+                model: "gpt-5-nano", // Cost-effective model
                 messages: [
                     {
                         role: "system",
