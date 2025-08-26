@@ -877,11 +877,11 @@ export class AgentController {
                     evaluations.forEach(evaluation => {
                         const key = evaluation.kanji;
                         const existing = phrasesMap.get(key);
-                        
-                        if (!existing || 
+
+                        if (!existing ||
                             new Date(evaluation.created_at) > new Date(existing.last_evaluated) ||
                             (evaluation.evaluation_score && (!existing.best_score || evaluation.evaluation_score > existing.best_score))) {
-                            
+
                             phrasesMap.set(key, {
                                 kanji: evaluation.kanji,
                                 romaji: evaluation.romaji,
@@ -923,6 +923,301 @@ export class AgentController {
             };
             return c.json(error, 500);
         }
+    }
+
+    /**
+     * Unified agent bootstrap endpoint - combines all startup data
+     */
+    static async bootstrap(c: Context) {
+        const userId = c.req.param('user_id');
+        const { include_raw_data } = c.req.query();
+        const agentContext = await getAgentContext(c);
+        const agentInfo = getAgentInfo(c);
+        const supabase = getAuthenticatedSupabase(c);
+        const startTime = Date.now();
+
+        let totalQueries = 0;
+        let cacheHits = 0;
+
+        if (!agentContext) {
+            const error: APIError = {
+                error: {
+                    code: 'CONTEXT_INITIALIZATION_FAILED',
+                    message: 'Failed to initialize agent context'
+                },
+                timestamp: new Date().toISOString()
+            };
+            return c.json(error, 500);
+        }
+
+        if (!userId) {
+            const error: APIError = {
+                error: {
+                    code: 'MISSING_USER_ID',
+                    message: 'User ID is required'
+                },
+                timestamp: new Date().toISOString()
+            };
+            return c.json(error, 400);
+        }
+
+        // Validate UUID format
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(userId)) {
+            const error: APIError = {
+                error: {
+                    code: 'INVALID_USER_ID',
+                    message: 'User ID must be a valid UUID'
+                },
+                timestamp: new Date().toISOString()
+            };
+            return c.json(error, 400);
+        }
+
+        try {
+            // OPTIMIZED: Single query to get all bootstrap data
+            const cacheKey = `bootstrap_unified:${userId}:${include_raw_data}`;
+
+            const bootstrapData = await globalCache.getOrSet(
+                cacheKey,
+                async () => {
+                    // Single comprehensive query using PostgreSQL JSON aggregation
+                    const { data, error } = await supabase.rpc('get_agent_bootstrap_data', {
+                        p_user_id: userId,
+                        p_include_raw_data: include_raw_data === 'true',
+                        p_days_back: 7
+                    });
+                    totalQueries = 1; // Only one RPC call
+
+                    if (error) {
+                        throw new Error(`Bootstrap query failed: ${error.message}`);
+                    }
+
+                    if (!data || data.length === 0) {
+                        throw new Error('User not found or no data available');
+                    }
+
+                    const result = data[0];
+
+                    // Process evaluated phrases if raw data was requested
+                    let processedEvaluatedPhrases = [];
+                    if (result.evaluations && result.evaluations.length > 0) {
+                        const phrasesMap = new Map();
+                        result.evaluations.forEach((evaluation: any) => {
+                            const key = evaluation.kanji;
+                            const existing = phrasesMap.get(key);
+
+                            if (!existing ||
+                                new Date(evaluation.created_at) > new Date(existing.last_evaluated) ||
+                                (evaluation.evaluation_score && (!existing.best_score || evaluation.evaluation_score > existing.best_score))) {
+
+                                phrasesMap.set(key, {
+                                    kanji: evaluation.kanji,
+                                    romaji: evaluation.romaji,
+                                    topic: evaluation.topic,
+                                    last_evaluated: evaluation.created_at,
+                                    best_score: evaluation.evaluation_score || existing?.best_score || null
+                                });
+                            }
+                        });
+                        processedEvaluatedPhrases = Array.from(phrasesMap.values());
+                    }
+
+                    return {
+                        user: {
+                            user_id: result.user_id,
+                            email: result.email,
+                            display_name: result.display_name,
+                            avatar_url: result.avatar_url
+                        },
+                        summary_data: {
+                            conversation_count: result.conversation_count || 0,
+                            evaluation_count: result.evaluation_count || 0,
+                            session_count: result.session_count || 0,
+                            has_user_context: !!result.user_context
+                        },
+                        conversations: result.conversations || [],
+                        evaluations: result.evaluations || [],
+                        raw_data: include_raw_data === 'true' ? {
+                            user_context: result.user_context ? {
+                                user_id: userId,
+                                preferences: result.user_context.preferences,
+                                progress: result.user_context.progress,
+                                session_history: result.user_context.session_history,
+                                created_at: result.user_context.created_at,
+                                updated_at: result.user_context.updated_at,
+                            } : null,
+                            evaluated_phrases: processedEvaluatedPhrases,
+                            recent_sessions: result.sessions || []
+                        } : undefined
+                    };
+                },
+                300000 // 5 minutes cache for unified data
+            );
+
+            // Note: Cache performance tracked via summary service
+
+            // 2. Generate ultra-efficient agent context from bootstrap data
+            const generatedSummary = await AgentController.generateAgentContext(bootstrapData, userId);
+            totalQueries += generatedSummary.llmQueries; // Track LLM API calls separately
+
+            // Record successful request
+            globalHealthMonitor.recordRequest(true, Date.now() - startTime);
+
+            // Log agent action for audit
+            console.log(`Bootstrap data accessed by agent ${agentInfo.agentId || agentContext?.agentId || 'unknown'} for user ${userId}`);
+
+            const executionTime = Date.now() - startTime;
+
+            return c.json({
+                success: true,
+                user_id: userId,
+                timestamp: new Date().toISOString(),
+
+                ai_summary: {
+                    compact_summary: generatedSummary.compact_summary,
+                    generated_at: generatedSummary.generated_at,
+                    from_cache: generatedSummary.from_cache,
+                    data_included: {
+                        conversation_count: bootstrapData.summary_data.conversation_count,
+                        evaluation_count: bootstrapData.summary_data.evaluation_count,
+                        session_count: bootstrapData.summary_data.session_count,
+                        has_user_context: bootstrapData.summary_data.has_user_context
+                    }
+                },
+
+                user_auth: {
+                    display_name: bootstrapData.user.display_name,
+                    email: bootstrapData.user.email,
+                    avatar_url: bootstrapData.user.avatar_url,
+                    user_verified: true
+                },
+
+                performance: {
+                    total_queries: totalQueries,
+                    cache_hits: cacheHits,
+                    execution_time_ms: executionTime
+                },
+
+                ...(bootstrapData.raw_data ? { raw_data: bootstrapData.raw_data } : {})
+            });
+
+        } catch (err) {
+            // Record failed request
+            globalHealthMonitor.recordRequest(false, Date.now() - startTime);
+
+            console.error('Agent bootstrap error:', err);
+
+            if (err instanceof Error && err.message.includes('No user data found')) {
+                const apiError: APIError = {
+                    error: {
+                        code: 'NO_DATA_AVAILABLE',
+                        message: 'No data available to generate summary for this user'
+                    },
+                    timestamp: new Date().toISOString()
+                };
+                return c.json(apiError, 404);
+            }
+
+            const error: APIError = {
+                error: {
+                    code: 'SERVER_ERROR',
+                    message: 'Failed to bootstrap agent data',
+                    details: err instanceof Error ? err.message : 'Unknown error'
+                },
+                timestamp: new Date().toISOString()
+            };
+            return c.json(error, 500);
+        }
+    }
+
+    /**
+     * Generate ultra-efficient agent context (token-optimized)
+     */
+    private static async generateAgentContext(bootstrapData: any, userId: string): Promise<{
+        compact_summary: string;
+        generated_at: string;
+        from_cache: boolean;
+        llmQueries: number;
+    }> {
+        const cacheKey = `agent_context:${userId}`;
+
+        // Check cache first (30 min cache for agent context)
+        const cached = await globalCache.get(cacheKey);
+        if (cached && typeof cached === 'string') {
+            return {
+                compact_summary: cached,
+                generated_at: new Date().toISOString(),
+                from_cache: true,
+                llmQueries: 0
+            };
+        }
+
+        // Extract key metrics for ultra-compact format
+        const user = bootstrapData.user;
+        const context = bootstrapData.raw_data?.user_context;
+        const conversations = bootstrapData.conversations || [];
+        const evaluations = bootstrapData.evaluations || [];
+
+        // Calculate dynamic stats
+        const level = context?.preferences?.learning_level || 'unknown';
+        const streak = context?.progress?.current_streak || 0;
+        const avgScore = evaluations.length > 0
+            ? (evaluations.reduce((sum: number, e: any) => sum + (e.evaluation_score || 0), 0) / evaluations.length).toFixed(1)
+            : '0';
+
+        // Identify strengths and gaps from recent performance
+        const recentTopics = [...new Set(evaluations.slice(0, 10).map((e: any) => e.topic))].slice(0, 3);
+        const goodScores = evaluations.filter((e: any) => e.evaluation_score >= 8).map((e: any) => e.topic);
+        const weakScores = evaluations.filter((e: any) => e.evaluation_score < 6).map((e: any) => e.topic);
+
+        // Get conversation patterns (last 10 messages)
+        const recentMessages = conversations.slice(0, 10).map((c: any) => c.message).join(' ');
+        const commonWords = this.extractKeywords(recentMessages, 3);
+
+        // Build token-efficient context (target: ~50 tokens)
+        const compactSummary = [
+            `USER: ${user.display_name || 'Student'} (${level.toUpperCase()}, ${streak}d streak)`,
+            `STATS: ${bootstrapData.summary_data.conversation_count} convos, ${bootstrapData.summary_data.evaluation_count} evals, ${avgScore}/10 avg`,
+            `TOPICS: ${recentTopics.join(', ') || 'general'}`,
+            goodScores.length > 0 ? `STRONG: ${[...new Set(goodScores)].slice(0, 3).join(', ')}` : '',
+            weakScores.length > 0 ? `FOCUS: ${[...new Set(weakScores)].slice(0, 3).join(', ')}` : '',
+            commonWords.length > 0 ? `RECENT: ${commonWords.join(', ')}` : ''
+        ].filter(line => line.length > 0).join(' | ');
+
+        // Cache for 30 minutes
+        globalCache.set(cacheKey, compactSummary, 1800000);
+
+        return {
+            compact_summary: compactSummary,
+            generated_at: new Date().toISOString(),
+            from_cache: false,
+            llmQueries: 0 // No LLM needed - pure algorithmic generation
+        };
+    }
+
+    /**
+     * Extract top N keywords from text (simple frequency-based)
+     */
+    private static extractKeywords(text: string, limit: number): string[] {
+        if (!text) return [];
+
+        // Simple keyword extraction (could be enhanced with NLP)
+        const words = text.toLowerCase()
+            .replace(/[^\w\s]/g, '')
+            .split(/\s+/)
+            .filter(word => word.length > 3)
+            .filter(word => !['this', 'that', 'with', 'have', 'will', 'from', 'they', 'been', 'said', 'each', 'which', 'their', 'time', 'would', 'there', 'could', 'other'].includes(word));
+
+        const freq = words.reduce((acc: any, word) => {
+            acc[word] = (acc[word] || 0) + 1;
+            return acc;
+        }, {});
+
+        return Object.entries(freq)
+            .sort(([, a], [, b]) => (b as number) - (a as number))
+            .slice(0, limit)
+            .map(([word]) => word);
     }
 
     /**

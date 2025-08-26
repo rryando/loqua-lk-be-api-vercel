@@ -174,3 +174,62 @@ export const GetEvaluatedPhrasesResponseSchema = z.object({
     evaluated_phrases: z.array(EvaluatedPhraseSchema),
     count: z.number(),
 });
+
+// Agent Bootstrap Schemas
+export const AgentBootstrapRequestSchema = z.object({
+    user_id: z.string().min(1, 'User ID is required'),
+    include_raw_data: z.boolean().default(false).describe('Whether to include raw data alongside AI summary'),
+});
+
+export const AgentBootstrapResponseSchema = z.object({
+    success: z.literal(true),
+    user_id: z.string(),
+    timestamp: z.string(),
+    
+    // AI-generated summary (always included)
+    ai_summary: z.object({
+        compact_summary: z.string(),
+        generated_at: z.string(),
+        from_cache: z.boolean(),
+        data_included: z.object({
+            conversation_count: z.number(),
+            evaluation_count: z.number(),
+            session_count: z.number(),
+            has_user_context: z.boolean(),
+        }),
+    }),
+    
+    // User authentication data
+    user_auth: z.object({
+        display_name: z.string().nullable(),
+        email: z.string().nullable(),
+        avatar_url: z.string().nullable(),
+        user_verified: z.boolean(),
+    }),
+    
+    // Performance metadata
+    performance: z.object({
+        total_queries: z.number(),
+        cache_hits: z.number(),
+        execution_time_ms: z.number(),
+    }),
+    
+    // Raw data (optional, only if include_raw_data=true)
+    raw_data: z.object({
+        user_context: z.object({
+            user_id: z.string(),
+            preferences: z.any(),
+            progress: z.any(),
+            session_history: z.any(),
+            created_at: z.string(),
+            updated_at: z.string(),
+        }).nullable().optional(),
+        evaluated_phrases: z.array(EvaluatedPhraseSchema).optional(),
+        recent_sessions: z.array(z.object({
+            session_id: z.string(),
+            duration_minutes: z.number(),
+            topics_covered: z.array(z.string()),
+            created_at: z.string(),
+        })).optional(),
+    }).optional(),
+});

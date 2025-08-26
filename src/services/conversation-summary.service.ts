@@ -89,7 +89,7 @@ export class ConversationSummaryService {
     }
 
     /**
-     * Check for valid cached summary
+     * Check for valid cached summary using optimized counters
      */
     private async getCachedSummary(
         supabase: SupabaseClient,
@@ -106,10 +106,14 @@ export class ConversationSummaryService {
             return null;
         }
 
-        // Check if data has changed since summary was generated
-        const currentDataHash = await this.calculateDataHash(supabase, userId);
+        // Get current data hash from counters table (single query)
+        const { data: counters } = await supabase
+            .from('user_activity_counters')
+            .select('data_hash')
+            .eq('user_id', userId)
+            .single();
 
-        if (cached.data_hash !== currentDataHash) {
+        if (!counters || cached.data_hash !== counters.data_hash) {
             // Data has changed, cached summary is stale
             return null;
         }
@@ -138,8 +142,14 @@ export class ConversationSummaryService {
         // Generate summary using OpenAI
         const compactSummary = await this.callOpenAIForSummary(userData);
 
-        // Calculate data hash
-        const dataHash = await this.calculateDataHash(supabase, userId);
+        // Get data hash from counters table (single query)
+        const { data: counters } = await supabase
+            .from('user_activity_counters')
+            .select('data_hash')
+            .eq('user_id', userId)
+            .single();
+
+        const dataHash = counters?.data_hash || '';
 
         // Cache the summary
         const generatedAt = new Date().toISOString();
@@ -198,19 +208,28 @@ export class ConversationSummaryService {
                 .single()
         ]);
 
+        // Get activity counters for metadata (single additional query)
+        const { data: counters } = await supabase
+            .from('user_activity_counters')
+            .select('conversation_count, evaluation_count, session_count, context_updated_at')
+            .eq('user_id', userId)
+            .single();
+
+        const hasAnyData = (conversations.data?.length || 0) + (evaluations.data?.length || 0) +
+            (sessions.data?.length || 0) + (userContext.data ? 1 : 0) > 0;
+
         return {
             userProfile: userProfile.data || null,
             conversations: conversations.data || [],
             evaluations: evaluations.data || [],
             sessions: sessions.data || [],
             userContext: userContext.data || null,
-            hasAnyData: (conversations.data?.length || 0) + (evaluations.data?.length || 0) +
-                (sessions.data?.length || 0) + (userContext.data ? 1 : 0) > 0,
+            hasAnyData,
             metadata: {
-                conversationCount: conversations.data?.length || 0,
-                evaluationCount: evaluations.data?.length || 0,
-                sessionCount: sessions.data?.length || 0,
-                hasUserContext: !!userContext.data
+                conversationCount: counters?.conversation_count || conversations.data?.length || 0,
+                evaluationCount: counters?.evaluation_count || evaluations.data?.length || 0,
+                sessionCount: counters?.session_count || sessions.data?.length || 0,
+                hasUserContext: !!counters?.context_updated_at || !!userContext.data
             }
         };
     }
@@ -294,41 +313,17 @@ Create compact summary for ${userName}.`;
     }
 
     /**
-     * Calculate hash of all user data to detect changes
+     * Get data hash from optimized counters table (single query)
+     * @deprecated - Hash is now maintained automatically by triggers
      */
     private async calculateDataHash(supabase: SupabaseClient, userId: string): Promise<string> {
-        // Get counts and latest timestamps of all user data
-        const [convCount, evalCount, sessionCount, contextUpdated] = await Promise.all([
-            supabase
-                .from('conversations')
-                .select('*', { count: 'exact', head: true })
-                .eq('user_id', userId),
+        const { data: counters } = await supabase
+            .from('user_activity_counters')
+            .select('data_hash')
+            .eq('user_id', userId)
+            .single();
 
-            supabase
-                .from('pronunciation_evaluations')
-                .select('*', { count: 'exact', head: true })
-                .eq('user_id', userId),
-
-            supabase
-                .from('learning_sessions')
-                .select('*', { count: 'exact', head: true })
-                .eq('user_id', userId),
-
-            supabase
-                .from('user_contexts')
-                .select('updated_at')
-                .eq('user_id', userId)
-                .single()
-        ]);
-
-        const hashData = {
-            conversations: convCount.count || 0,
-            evaluations: evalCount.count || 0,
-            sessions: sessionCount.count || 0,
-            context_updated: contextUpdated.data?.updated_at || ''
-        };
-
-        return crypto.createHash('md5').update(JSON.stringify(hashData)).digest('hex');
+        return counters?.data_hash || '';
     }
 
     /**
@@ -359,37 +354,20 @@ Create compact summary for ${userName}.`;
     }
 
     /**
-     * Get metadata about what data was included in summary
+     * Get metadata about what data was included in summary from counters
      */
     private async getDataIncludedMetadata(supabase: SupabaseClient, userId: string) {
-        const [convCount, evalCount, sessionCount, hasContext] = await Promise.all([
-            supabase
-                .from('conversations')
-                .select('*', { count: 'exact', head: true })
-                .eq('user_id', userId),
-
-            supabase
-                .from('pronunciation_evaluations')
-                .select('*', { count: 'exact', head: true })
-                .eq('user_id', userId),
-
-            supabase
-                .from('learning_sessions')
-                .select('*', { count: 'exact', head: true })
-                .eq('user_id', userId),
-
-            supabase
-                .from('user_contexts')
-                .select('user_id')
-                .eq('user_id', userId)
-                .single()
-        ]);
+        const { data: counters } = await supabase
+            .from('user_activity_counters')
+            .select('conversation_count, evaluation_count, session_count, context_updated_at')
+            .eq('user_id', userId)
+            .single();
 
         return {
-            conversationCount: convCount.count || 0,
-            evaluationCount: evalCount.count || 0,
-            sessionCount: sessionCount.count || 0,
-            hasUserContext: !hasContext.error && !!hasContext.data
+            conversationCount: counters?.conversation_count || 0,
+            evaluationCount: counters?.evaluation_count || 0,
+            sessionCount: counters?.session_count || 0,
+            hasUserContext: !!counters?.context_updated_at
         };
     }
 }

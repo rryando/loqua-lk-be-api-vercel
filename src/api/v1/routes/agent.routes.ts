@@ -16,6 +16,7 @@ import {
     agentStorePronunciationEvaluationRoute,
     agentGetPronunciationEvaluationsRoute,
     agentGetEvaluatedPhrasesRoute,
+    agentBootstrapRoute,
 } from '../openapi/agent-openapi';
 
 const agent = new OpenAPIHono();
@@ -100,6 +101,15 @@ agent.openapi(agentGetEvaluatedPhrasesRoute, async (c) => {
     await validateAgentContext()(c, async () => { });
 
     return AgentController.getEvaluatedPhrases(c);
+});
+
+// GET /agent/bootstrap/{user_id} - Unified agent bootstrap endpoint
+agent.openapi(agentBootstrapRoute, async (c) => {
+    // Apply middleware manually
+    await agentAuthMiddleware()(c, async () => { });
+    await validateAgentContext()(c, async () => { });
+
+    return AgentController.bootstrap(c);
 });
 
 export default agent;
