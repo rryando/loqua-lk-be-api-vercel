@@ -46,7 +46,7 @@ export class ConversationSummaryService {
             throw new Error(`Failed to store conversations: ${error.message}`);
         }
 
-        const sessionIds = [...new Set(data?.map(d => d.session_id) || [])];
+        const sessionIds = [...new Set((data?.map(d => d.session_id) || []) as string[])];
 
         return {
             stored_count: conversationsToInsert.length,

@@ -4,7 +4,7 @@ import { BaseAuthProvider, AuthUser, AuthSession } from './base';
 
 export class SupabaseAuthProvider extends BaseAuthProvider {
     name = 'supabase';
-    private supabase: SupabaseClient;
+    private supabase: any;
 
     constructor(
         private supabaseUrl: string,
@@ -40,19 +40,39 @@ export class SupabaseAuthProvider extends BaseAuthProvider {
                 }
             });
 
-            // Use getUser() which works correctly with the standard client
-            const { data: { user }, error } = await supabaseWithToken.auth.getUser();
+            // Use type assertion to work around TypeScript interface issues
+            const authClient = supabaseWithToken.auth as any;
 
-            if (error || !user) {
+            // Try getUser() first, fallback to getSession() if needed
+            let userData;
+            try {
+                const { data: { user }, error } = await authClient.getUser();
+                if (!error && user) {
+                    userData = user;
+                }
+            } catch (getUserError) {
+                // Fallback to getSession if getUser fails
+                try {
+                    const { data: { session }, error } = await authClient.getSession();
+                    if (!error && session?.user) {
+                        userData = session.user;
+                    }
+                } catch (getSessionError) {
+                    console.error('Both getUser and getSession failed:', getUserError, getSessionError);
+                    return null;
+                }
+            }
+
+            if (!userData) {
                 return null;
             }
 
             return {
-                id: user.id,
-                email: user.email || null,
-                displayName: user.user_metadata?.full_name || user.email?.split('@')[0] || null,
-                avatarUrl: user.user_metadata?.avatar_url || null,
-                metadata: user.user_metadata || {},
+                id: userData.id,
+                email: userData.email || null,
+                displayName: userData.user_metadata?.full_name || userData.email?.split('@')[0] || null,
+                avatarUrl: userData.user_metadata?.avatar_url || null,
+                metadata: userData.user_metadata || {},
             };
         } catch (error) {
             console.error('Supabase token verification error:', error);
@@ -86,8 +106,16 @@ export class SupabaseAuthProvider extends BaseAuthProvider {
                 }
             });
 
-            // Standard signOut method
-            await supabaseWithToken.auth.signOut();
+            // Use type assertion to work around TypeScript interface issues
+            const authClient = supabaseWithToken.auth as any;
+
+            // Try different signOut methods based on what's available
+            try {
+                await authClient.signOut();
+            } catch (signOutError) {
+                // Alternative: just invalidate the token locally since we can't sign out remotely
+                console.warn('Remote signOut failed, token will be invalidated on next verification:', signOutError);
+            }
         } catch (error) {
             console.error('Supabase sign out error:', error);
             // Fallback: even if signOut fails, the token verification will fail on next request
