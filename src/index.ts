@@ -1,35 +1,35 @@
-import { createOpenAPIApp, setupDocumentation } from './lib/openapi';
+import { createOpenAPIApp, setupDocumentation } from './lib/openapi.js';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { HTTPException } from 'hono/http-exception';
-import { supabaseMiddleware } from './middleware/auth.middleware';
+import { supabaseMiddleware } from './middleware/auth.middleware.js';
 import { createRoute } from '@hono/zod-openapi';
 import { z } from 'zod';
-import { APIError } from './types/index';
+import { APIError } from './types/index.js';
 
 // // Import OpenAPI route definitions
 // import {
 //   getUserContextRoute,
 //   updateUserContextRoute,
 //   getUserProgressRoute
-// } from './api/v1/openapi/users-openapi';
+// } from './api/v1/openapi/users-openapi.js';
 // import {
 //   createSessionRoute,
 //   getUserSessionsRoute
-// } from './api/v1/openapi/sessions-openapi';
+// } from './api/v1/openapi/sessions-openapi.js';
 // import {
 //   joinRoomRoute,
 //   getActiveRoomsRoute
-// } from './api/v1/openapi/rooms-openapi';
+// } from './api/v1/openapi/rooms-openapi.js';
 // import {
 //   agentProgressRoute,
 //   agentSessionRoute,
 //   agentUserContextRoute,
 //   agentHealthRoute,
-// } from './api/v1/openapi/agent-openapi';
+// } from './api/v1/openapi/agent-openapi.js';
 
 // Import actual route handlers
-import { usersRoutes, sessionsRoutes, roomsRoutes, agentRoutes, conversationsRoutes } from './api/v1/routes/index';
+import { usersRoutes, sessionsRoutes, roomsRoutes, agentRoutes, conversationsRoutes } from './api/v1/routes/index.js';
 
 // Create OpenAPI app
 const app = createOpenAPIApp();

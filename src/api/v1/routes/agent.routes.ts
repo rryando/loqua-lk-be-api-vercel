@@ -3,8 +3,8 @@ import {
     agentAuthMiddleware,
     validateAgentContext,
     requireAgentPermission,
-} from '../../../middleware/agent.middleware';
-import { AgentController } from '../controllers/agent.controller';
+} from '../../../middleware/agent.middleware.js';
+import { AgentController } from '../controllers/agent.controller.js';
 import {
     agentProgressRoute,
     agentSessionRoute,
@@ -17,7 +17,7 @@ import {
     agentGetPronunciationEvaluationsRoute,
     agentGetEvaluatedPhrasesRoute,
     agentBootstrapRoute,
-} from '../openapi/agent-openapi';
+} from '../openapi/agent-openapi.js';
 
 const agent = new OpenAPIHono();
 

@@ -1,6 +1,6 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { SupabaseClient, createClient } from '@supabase/supabase-js';
-import { BaseAuthProvider, AuthUser, AuthSession } from './base';
+import { BaseAuthProvider, AuthUser, AuthSession } from './base.js';
 
 export class SupabaseAuthProvider extends BaseAuthProvider {
     name = 'supabase';

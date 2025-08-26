@@ -1,13 +1,13 @@
 import type { Context } from 'hono';
 import { v4 as uuidv4 } from 'uuid';
-import { getSupabase, extractUserId } from '../../../middleware/index';
+import { getSupabase, extractUserId } from '../../../middleware/index.js';
 import {
     CreateSessionRequest,
     SessionResponse,
     APIError,
     UserProgress,
     DatabaseLearningSession
-} from '../../../types/index';
+} from '../../../types/index.js';
 
 export class SessionsController {
     /**

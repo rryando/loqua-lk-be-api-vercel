@@ -1,5 +1,5 @@
 import type { Context } from 'hono';
-import { extractUserId, getAuthenticatedSupabase } from '../../../middleware/index';
+import { extractUserId, getAuthenticatedSupabase } from '../../../middleware/index.js';
 import {
     UserContextResponse,
     UpdateContextResponse,
@@ -9,8 +9,8 @@ import {
     SessionHistory,
     DatabaseUserContext,
     ProgressAnalytics
-} from '../../../types/index';
-import { pronunciationService, EnhancementRequest } from '../../../services/pronunciation.service';
+} from '../../../types/index.js';
+import { pronunciationService, EnhancementRequest } from '../../../services/pronunciation.service.js';
 
 export class UsersController {
     /**

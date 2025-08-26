@@ -1,19 +1,19 @@
 import type { Context } from 'hono';
 import { v4 as uuidv4 } from 'uuid';
 import { env } from 'hono/adapter';
-import jwt from 'jsonwebtoken';
-import { getAgentContext, getAuthenticatedSupabase, getAgentInfo, getRequestBody } from '../../../middleware/index';
-import { TokenEncryption } from '../../../utils/token-encryption';
-import { EnvironmentConfig } from '../../../utils/environment-config';
-import { globalHealthMonitor } from '../../../utils/health-monitor';
-import { globalRequestBatcher, globalCache } from '../../../utils/request-batcher';
+import * as jwt from 'jsonwebtoken';
+import { getAgentContext, getAuthenticatedSupabase, getAgentInfo, getRequestBody } from '../../../middleware/index.js';
+import { TokenEncryption } from '../../../utils/token-encryption.js';
+import { EnvironmentConfig } from '../../../utils/environment-config.js';
+import { globalHealthMonitor } from '../../../utils/health-monitor.js';
+import { globalRequestBatcher, globalCache } from '../../../utils/request-batcher.js';
 import { v4 as generateId } from 'uuid';
 import {
     APIError,
     UserProgress,
     DatabaseLearningSession,
     DatabaseUserFlashCard,
-} from '../../../types/index';
+} from '../../../types/index.js';
 
 type EncryptionEnv = {
     JWT_SECRET?: string;

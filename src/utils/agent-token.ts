@@ -1,5 +1,5 @@
 // Utility for generating agent tokens (development/testing)
-import { AgentAuthProvider } from '../auth/providers/agent';
+import { AgentAuthProvider } from '../auth/providers/agent.js';
 
 export function createAgentToken(agentId: string = 'livekit-agent', jwtSecret?: string): string {
     const secret = jwtSecret || process.env.JWT_SECRET;

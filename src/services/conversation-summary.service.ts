@@ -6,7 +6,7 @@ import {
     DatabaseConversation,
     DatabaseUserSummary,
     GetUserSummaryResponse
-} from '../api/v1/schemas/conversations.schemas';
+} from '../api/v1/schemas/conversations.schemas.js';
 
 export class ConversationSummaryService {
     private openai: OpenAI;

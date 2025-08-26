@@ -3,14 +3,14 @@ import { z } from 'zod';
 import {
     APIErrorSchema,
     createAuthenticatedRoute,
-} from '../../../lib/openapi';
+} from '../../../lib/openapi.js';
 import {
     UserGetPronunciationEvaluationsQuerySchema,
     UserGetPronunciationEvaluationsResponseSchema,
     UserGetEvaluatedPhrasesQuerySchema,
     UserGetEvaluatedPhrasesResponseSchema,
     UserPronunciationAudioResponseSchema,
-} from '../schemas/users.schemas';
+} from '../schemas/users.schemas.js';
 
 // Get User Pronunciation Evaluations Route
 export const getUserPronunciationEvaluationsRoute = createRoute(

@@ -2,8 +2,8 @@
  * Resilient API client with circuit breaker, retry logic, and graceful degradation
  */
 
-import { CircuitBreaker, CircuitBreakerManager, CircuitBreakerConfig } from './circuit-breaker';
-import { EnvironmentConfig } from './environment-config';
+import { CircuitBreaker, CircuitBreakerManager, CircuitBreakerConfig } from './circuit-breaker.js';
+import { EnvironmentConfig } from './environment-config.js';
 
 export interface RetryConfig {
   maxRetries: number;
@@ -121,7 +121,7 @@ export class ResilientApiClient {
       );
 
       const responseTime = Date.now() - startTime;
-      
+
       // Cache successful responses
       if (request.cacheKey && result.success && !result.degraded) {
         this.cache.set(request.cacheKey, result.data);
@@ -135,10 +135,10 @@ export class ResilientApiClient {
 
     } catch (error) {
       const responseTime = Date.now() - startTime;
-      
+
       // Try degradation as last resort
       const degradedResult = await this.handleDegradation<T>(request);
-      
+
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -174,7 +174,7 @@ export class ResilientApiClient {
         }
 
         const data = await response.json();
-        
+
         return {
           success: true,
           data,
@@ -197,7 +197,7 @@ export class ResilientApiClient {
         return await fn();
       } catch (error) {
         lastError = error instanceof Error ? error : new Error('Unknown error');
-        
+
         if (attempt === this.config.retry.maxRetries) {
           break; // No more retries
         }
@@ -215,7 +215,7 @@ export class ResilientApiClient {
         delay = delay + Math.random() * delay * 0.1;
 
         console.warn(`API request failed (attempt ${attempt + 1}/${this.config.retry.maxRetries + 1}), retrying in ${delay}ms:`, lastError.message);
-        
+
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
@@ -242,8 +242,8 @@ export class ResilientApiClient {
             };
           }
         }
-        // Fall through to MOCK if no cache
-        
+      // Fall through to MOCK if no cache
+
       case DegradationMode.MOCK:
         if (request.mockResponse) {
           console.warn(`Using mock response for ${this.serviceName}`);
@@ -256,8 +256,8 @@ export class ResilientApiClient {
             fromCache: false
           };
         }
-        // Fall through to BASIC if no mock
-        
+      // Fall through to BASIC if no mock
+
       case DegradationMode.BASIC:
         console.warn(`Using basic degraded response for ${this.serviceName}`);
         return {
@@ -268,7 +268,7 @@ export class ResilientApiClient {
           responseTime: 0,
           fromCache: false
         };
-        
+
       case DegradationMode.FAIL:
       default:
         throw new Error(`Service ${this.serviceName} is unavailable and no degradation strategy configured`);

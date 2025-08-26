@@ -5,7 +5,7 @@ import {
     SessionResponseSchema,
     APIErrorSchema,
     createAuthenticatedRoute,
-} from '../../../lib/openapi';
+} from '../../../lib/openapi.js';
 import {
     StorePronunciationEvaluationSchema,
     StorePronunciationEvaluationResponseSchema,
@@ -14,7 +14,7 @@ import {
     GetEvaluatedPhrasesQuerySchema,
     GetEvaluatedPhrasesResponseSchema,
     AgentBootstrapResponseSchema,
-} from '../schemas/agent.schemas';
+} from '../schemas/agent.schemas.js';
 
 // Agent Progress Update Route
 export const agentProgressRoute = createRoute({

@@ -1,7 +1,7 @@
 import OpenAI from 'openai';
 import { writeFile, mkdir, access, readFile } from 'fs/promises';
 import { createHash } from 'crypto';
-import path from 'path';
+import * as path from 'path';
 
 export interface PronunciationData {
     kanji: string;

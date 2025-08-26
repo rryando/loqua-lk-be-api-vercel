@@ -4,13 +4,13 @@ import type { Context, MiddlewareHandler } from 'hono';
 import { env } from 'hono/adapter';
 import { setCookie } from 'hono/cookie';
 // import { HTTPException } from 'hono/http-exception';
-import { DatabaseUser, APIError } from '../types/index';
-import { AuthManager } from '../auth/manager';
-import { SupabaseAuthProvider } from '../auth/providers/supabase';
-import { JWTAuthProvider } from '../auth/providers/jwt';
-import { AgentAuthProvider } from '../auth/providers/agent';
-import { AuthUser } from '../auth/providers/base';
-import { EnvironmentConfig } from '../utils/environment-config';
+import { DatabaseUser, APIError } from '../types/index.js';
+import { AuthManager } from '../auth/manager.js';
+import { SupabaseAuthProvider } from '../auth/providers/supabase.js';
+import { JWTAuthProvider } from '../auth/providers/jwt.js';
+import { AgentAuthProvider } from '../auth/providers/agent.js';
+import { AuthUser } from '../auth/providers/base.js';
+import { EnvironmentConfig } from '../utils/environment-config.js';
 
 declare module 'hono' {
   interface ContextVariableMap {

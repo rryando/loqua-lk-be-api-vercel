@@ -2,8 +2,12 @@
 	"compilerOptions": {
 		"target": "ESNext",
 		"module": "ESNext",
-		"moduleResolution": "Bundler",
+		"moduleResolution": "node",
+		"allowSyntheticDefaultImports": true,
+		"esModuleInterop": true,
 		"strict": false,
+		"skipLibCheck": true,
+		"forceConsistentCasingInFileNames": true,
 		"lib": [
 			"ESNext",
 			"DOM",

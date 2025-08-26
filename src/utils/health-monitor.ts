@@ -3,9 +3,9 @@
  * Tracks system health, performance metrics, and alert conditions
  */
 
-import { CircuitBreakerManager } from './circuit-breaker';
-import { globalTokenManager } from './token-manager';
-import { EnvironmentConfig } from './environment-config';
+import { CircuitBreakerManager } from './circuit-breaker.js';
+import { globalTokenManager } from './token-manager.js';
+import { EnvironmentConfig } from './environment-config.js';
 
 export enum HealthStatus {
   HEALTHY = 'HEALTHY',
@@ -94,7 +94,7 @@ export class HealthMonitor {
    */
   recordRequest(success: boolean, responseTime: number): void {
     const now = Date.now();
-    
+
     this.requestMetrics.total++;
     if (success) {
       this.requestMetrics.successful++;
@@ -123,7 +123,7 @@ export class HealthMonitor {
   registerHealthCheck(name: string, checkFn: () => Promise<Omit<HealthCheck, 'name' | 'lastCheck'>>): void {
     // Run initial check
     this.runHealthCheck(name, checkFn);
-    
+
     // Set up periodic checks every 30 seconds
     setInterval(() => {
       this.runHealthCheck(name, checkFn);
@@ -155,7 +155,7 @@ export class HealthMonitor {
   getMetrics(): SystemMetrics {
     const now = Date.now();
     const oneMinuteAgo = now - 60000;
-    
+
     // Calculate memory usage
     const memUsage = process.memoryUsage();
     const memoryUsage = {
@@ -168,7 +168,7 @@ export class HealthMonitor {
     const recentRequests = this.requestMetrics.recentRequests.filter(
       req => req.timestamp > oneMinuteAgo
     );
-    
+
     const averageResponseTime = this.requestMetrics.responseTimes.length > 0
       ? this.requestMetrics.responseTimes.reduce((a, b) => a + b, 0) / this.requestMetrics.responseTimes.length
       : 0;
@@ -198,7 +198,7 @@ export class HealthMonitor {
   async getHealthReport(): Promise<HealthReport> {
     const metrics = this.getMetrics();
     const checks = Array.from(this.healthChecks.values());
-    
+
     // Determine overall status
     let overallStatus = HealthStatus.HEALTHY;
     if (checks.some(check => check.status === HealthStatus.UNHEALTHY)) {
@@ -250,8 +250,8 @@ export class HealthMonitor {
       },
       {
         name: 'CIRCUIT_BREAKER_OPEN',
-        condition: (_, checks) => checks.some(check => 
-          check.name === 'circuit-breakers' && 
+        condition: (_, checks) => checks.some(check =>
+          check.name === 'circuit-breakers' &&
           check.metadata?.hasOpenCircuits === true
         ),
         severity: 'CRITICAL',
@@ -260,8 +260,8 @@ export class HealthMonitor {
       },
       {
         name: 'TOKEN_REFRESH_FAILURES',
-        condition: (_, checks) => checks.some(check => 
-          check.name === 'token-manager' && 
+        condition: (_, checks) => checks.some(check =>
+          check.name === 'token-manager' &&
           check.status === HealthStatus.UNHEALTHY
         ),
         severity: 'CRITICAL',
@@ -320,7 +320,7 @@ export class HealthMonitor {
     this.monitoringInterval = setInterval(async () => {
       try {
         const report = await this.getHealthReport();
-        
+
         // Log health status periodically
         if (report.overallStatus !== HealthStatus.HEALTHY) {
           console.warn(`System health: ${report.overallStatus}`, {
@@ -347,7 +347,7 @@ export class HealthMonitor {
         // For now, we'll just check if we can access environment config
         const config = EnvironmentConfig.getInstance();
         const envConfig = config.getConfig();
-        
+
         return {
           status: HealthStatus.HEALTHY,
           message: `Database accessible in ${envConfig.environment} environment`,
@@ -367,14 +367,14 @@ export class HealthMonitor {
       const startTime = Date.now();
       const breakerManager = CircuitBreakerManager.getInstance();
       const healthStatus = breakerManager.getHealthStatus();
-      
+
       const openCircuits = Object.entries(healthStatus.details)
         .filter(([_, healthy]) => !healthy)
         .map(([name]) => name);
 
       return {
         status: healthStatus.healthy ? HealthStatus.HEALTHY : HealthStatus.DEGRADED,
-        message: openCircuits.length > 0 
+        message: openCircuits.length > 0
           ? `Circuit breakers open: ${openCircuits.join(', ')}`
           : 'All circuit breakers healthy',
         responseTime: Date.now() - startTime,
@@ -392,16 +392,16 @@ export class HealthMonitor {
       try {
         const stats = globalTokenManager.getStats();
         const statuses = globalTokenManager.getTokenStatuses();
-        
+
         // Clean up expired tokens
         globalTokenManager.cleanupExpiredTokens();
-        
+
         const hasExpiredTokens = stats.expiredTokens > 0;
         const hasFailedRefreshes = stats.activeRefreshes > 0 && stats.tokensNeedingRefresh > 0;
-        
+
         let status = HealthStatus.HEALTHY;
         let message = `Token manager healthy: ${stats.validTokens} valid tokens`;
-        
+
         if (hasFailedRefreshes) {
           status = HealthStatus.DEGRADED;
           message = `Token refresh issues: ${stats.tokensNeedingRefresh} tokens need refresh`;
@@ -409,7 +409,7 @@ export class HealthMonitor {
           status = HealthStatus.DEGRADED;
           message = `Expired tokens detected: ${stats.expiredTokens} expired`;
         }
-        
+
         return {
           status,
           message,
@@ -434,12 +434,12 @@ export class HealthMonitor {
       try {
         const envConfig = EnvironmentConfig.getInstance();
         const config = envConfig.getPublicConfig();
-        
+
         const hasRequiredSecrets = config.hasAgentSecret && config.hasJwtSecret;
-        
+
         return {
           status: hasRequiredSecrets ? HealthStatus.HEALTHY : HealthStatus.UNHEALTHY,
-          message: hasRequiredSecrets 
+          message: hasRequiredSecrets
             ? `Configuration valid for ${config.environment} environment`
             : 'Missing required secrets configuration',
           responseTime: Date.now() - startTime,

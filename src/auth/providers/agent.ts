@@ -1,5 +1,5 @@
-import jwt from 'jsonwebtoken';
-import { BaseAuthProvider, AuthUser } from './base';
+import * as jwt from 'jsonwebtoken';
+import { BaseAuthProvider, AuthUser } from './base.js';
 
 export interface AgentJWTPayload {
     sub: string; // agent ID (e.g., 'livekit-agent')

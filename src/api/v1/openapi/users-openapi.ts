@@ -7,13 +7,13 @@ import {
     ProgressAnalyticsSchema,
     APIErrorSchema,
     createAuthenticatedRoute,
-} from '../../../lib/openapi';
+} from '../../../lib/openapi.js';
 import {
     UserGetPronunciationEvaluationsQuerySchema,
     UserGetPronunciationEvaluationsResponseSchema,
     UserGetEvaluatedPhrasesQuerySchema,
     UserGetEvaluatedPhrasesResponseSchema,
-} from '../schemas/users.schemas';
+} from '../schemas/users.schemas.js';
 
 // Get User Context Route
 export const getUserContextRoute = createRoute(

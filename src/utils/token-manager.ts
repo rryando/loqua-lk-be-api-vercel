@@ -2,10 +2,10 @@
  * Token lifecycle management with automatic refresh and validation
  */
 
-import jwt from 'jsonwebtoken';
-import { TokenEncryption } from './token-encryption';
-import { EnvironmentConfig } from './environment-config';
-import { ResilientApiClient, ApiRequest, DegradationMode } from './resilient-api';
+import * as jwt from 'jsonwebtoken';
+import { TokenEncryption } from './token-encryption.js';
+import { EnvironmentConfig } from './environment-config.js';
+import { ResilientApiClient, ApiRequest, DegradationMode } from './resilient-api.js';
 
 export interface TokenInfo {
   token: string;
@@ -51,8 +51,8 @@ export class TokenManager {
    * Request a new encrypted user token from the API
    */
   async requestUserToken(
-    roomName: string, 
-    userId: string, 
+    roomName: string,
+    userId: string,
     agentId: string,
     agentJwt: string
   ): Promise<TokenInfo> {
@@ -101,7 +101,7 @@ export class TokenManager {
     };
 
     const response = await this.apiClient.execute(request);
-    
+
     if (!response.success || !response.data) {
       throw new Error(`Failed to request user token: ${response.error}`);
     }
@@ -111,10 +111,10 @@ export class TokenManager {
       expires_in: number;
       issued_at: string;
     };
-    
+
     // Decrypt the token
     const decryptedToken = TokenEncryption.decrypt(encrypted_token, this.config.agentTokenSecret);
-    
+
     // Validate the decrypted token format
     if (!TokenEncryption.validateTokenFormat(decryptedToken)) {
       throw new Error('Received invalid JWT token format');
@@ -153,7 +153,7 @@ export class TokenManager {
 
     // Check if token needs refresh
     const validation = this.validateToken(tokenInfo);
-    
+
     if (!validation.isValid) {
       console.log(`Token for ${tokenKey} is invalid: ${validation.error}`);
       tokenInfo = await this.requestUserToken(roomName, userId, agentId, agentJwt);
@@ -234,7 +234,7 @@ export class TokenManager {
     agentJwt: string
   ): Promise<void> {
     const tokenKey = this.getTokenKey(roomName, userId, agentId);
-    
+
     // Avoid multiple background refreshes
     if (this.refreshPromises.has(tokenKey)) {
       return;

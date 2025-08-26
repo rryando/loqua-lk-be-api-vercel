@@ -1,10 +1,10 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
-import { requireAuth } from '../../../middleware/auth.middleware';
-import { SessionsController } from '../controllers/sessions.controller';
+import { requireAuth } from '../../../middleware/auth.middleware.js';
+import { SessionsController } from '../controllers/sessions.controller.js';
 import {
     createSessionRoute,
     getUserSessionsRoute
-} from '../openapi/sessions-openapi';
+} from '../openapi/sessions-openapi.js';
 
 const sessions = new OpenAPIHono();
 

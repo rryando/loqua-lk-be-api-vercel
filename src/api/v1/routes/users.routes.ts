@@ -1,16 +1,16 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
-import { requireAuth } from '../../../middleware/auth.middleware';
-import { UsersController } from '../controllers/users.controller';
+import { requireAuth } from '../../../middleware/auth.middleware.js';
+import { UsersController } from '../controllers/users.controller.js';
 import {
     getUserContextRoute,
     updateUserContextRoute,
     getUserProgressRoute
-} from '../openapi/users-openapi';
+} from '../openapi/users-openapi.js';
 import {
     getUserPronunciationEvaluationsRoute,
     getUserEvaluatedPhrasesRoute,
     getUserPronunciationAudioRoute,
-} from '../openapi/users-pronunciation-openapi';
+} from '../openapi/users-pronunciation-openapi.js';
 
 const users = new OpenAPIHono();
 

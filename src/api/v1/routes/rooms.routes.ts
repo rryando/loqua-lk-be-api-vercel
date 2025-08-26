@@ -1,10 +1,10 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
-import { requireAuth } from '../../../middleware/auth.middleware';
-import { RoomsController } from '../controllers/rooms.controller';
+import { requireAuth } from '../../../middleware/auth.middleware.js';
+import { RoomsController } from '../controllers/rooms.controller.js';
 import {
     joinRoomRoute,
     getActiveRoomsRoute
-} from '../openapi/rooms-openapi';
+} from '../openapi/rooms-openapi.js';
 
 const rooms = new OpenAPIHono();
 

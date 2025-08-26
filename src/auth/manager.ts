@@ -1,4 +1,4 @@
-import { AuthProvider, AuthUser, AuthSession } from './providers/base';
+import { AuthProvider, AuthUser, AuthSession } from './providers/base.js';
 
 export class AuthManager {
     private providers: Map<string, AuthProvider> = new Map();

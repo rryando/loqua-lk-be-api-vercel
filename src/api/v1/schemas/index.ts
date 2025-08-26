@@ -1,10 +1,10 @@
 // Export all schemas from a single place for easy imports
 
 // Common schemas
-export * from './common.schemas';
+export * from './common.schemas.js';
 
 // Domain-specific schemas
-export * from './agent.schemas';
-export * from './users.schemas';
-export * from './sessions.schemas';
-export * from './rooms.schemas';
+export * from './agent.schemas.js';
+export * from './users.schemas.js';
+export * from './sessions.schemas.js';
+export * from './rooms.schemas.js';

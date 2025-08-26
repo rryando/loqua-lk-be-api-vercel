@@ -1,5 +1,5 @@
-import { AuthManager } from '../../auth/manager';
-import { LifecycleService } from '../manager';
+import { AuthManager } from '../../auth/manager.js';
+import { LifecycleService } from '../manager.js';
 
 export class AuthService implements LifecycleService {
     name = 'auth';

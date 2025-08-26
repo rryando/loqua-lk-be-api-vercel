@@ -1,12 +1,12 @@
 import type { Context } from 'hono';
 import { AccessToken } from 'livekit-server-sdk';
 import { env } from 'hono/adapter';
-import { getSupabase, extractUserId, getCurrentDbUser } from '../../../middleware/index';
+import { getSupabase, extractUserId, getCurrentDbUser } from '../../../middleware/index.js';
 import {
     RoomJoinRequest,
     RoomTokenResponse,
     APIError
-} from '../../../types/index';
+} from '../../../types/index.js';
 
 // Environment variables type
 type LiveKitEnv = {

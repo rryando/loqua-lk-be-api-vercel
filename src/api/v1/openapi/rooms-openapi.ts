@@ -5,7 +5,7 @@ import {
     RoomTokenResponseSchema,
     APIErrorSchema,
     createAuthenticatedRoute,
-} from '../../../lib/openapi';
+} from '../../../lib/openapi.js';
 
 // Join LiveKit Room Route
 export const joinRoomRoute = createRoute(

@@ -1,6 +1,6 @@
 import type { Context, MiddlewareHandler } from 'hono';
-import { getSupabase, getAuthManager, getCurrentUser, getAuthenticatedSupabase } from './auth.middleware';
-import { APIError } from '../types/index';
+import { getSupabase, getAuthManager, getCurrentUser, getAuthenticatedSupabase } from './auth.middleware.js';
+import { APIError } from '../types/index.js';
 import { v4 as uuidv4 } from 'uuid';
 
 declare module 'hono' {

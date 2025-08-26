@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { LifecycleService } from '../manager';
+import { LifecycleService } from '../manager.js';
 
 export class DatabaseService implements LifecycleService {
     name = 'database';

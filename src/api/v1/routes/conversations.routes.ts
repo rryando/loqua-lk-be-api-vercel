@@ -1,9 +1,9 @@
 import { OpenAPIHono } from '@hono/zod-openapi';
-import { ConversationsController } from '../controllers/conversations.controller';
+import { ConversationsController } from '../controllers/conversations.controller.js';
 import {
     storeConversationsRoute,
     getUserSummaryRoute,
-} from '../openapi/conversations-openapi';
+} from '../openapi/conversations-openapi.js';
 
 const conversations = new OpenAPIHono();
 

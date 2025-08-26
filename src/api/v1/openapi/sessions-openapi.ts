@@ -5,7 +5,7 @@ import {
     SessionResponseSchema,
     APIErrorSchema,
     createAuthenticatedRoute,
-} from '../../../lib/openapi';
+} from '../../../lib/openapi.js';
 
 // Create Learning Session Route
 export const createSessionRoute = createRoute(

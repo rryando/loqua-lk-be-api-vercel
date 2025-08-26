@@ -1,7 +1,7 @@
 import type { Context } from 'hono';
-import { getAuthenticatedSupabase } from '../../../middleware/index';
-import { conversationSummaryService } from '../../../services/conversation-summary.service';
-import { APIError } from '../../../types/index';
+import { getAuthenticatedSupabase } from '../../../middleware/index.js';
+import { conversationSummaryService } from '../../../services/conversation-summary.service.js';
+import { APIError } from '../../../types/index.js';
 
 export class ConversationsController {
     /**

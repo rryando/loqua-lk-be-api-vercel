@@ -1,11 +1,11 @@
 import { createRoute } from '@hono/zod-openapi';
 import { z } from 'zod';
-import { APIErrorSchema } from '../schemas/common.schemas';
+import { APIErrorSchema } from '../schemas/common.schemas.js';
 import {
     StoreConversationRequestSchema,
     StoreConversationResponseSchema,
     GetUserSummaryResponseSchema,
-} from '../schemas/conversations.schemas';
+} from '../schemas/conversations.schemas.js';
 
 // Store Conversations Route
 export const storeConversationsRoute = createRoute({
