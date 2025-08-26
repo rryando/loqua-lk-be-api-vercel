@@ -3,8 +3,6 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "start": "vercel dev",
-    "deploy": "vercel",
     "build": "vite build",
     "generate-agent-token": "node --import tsx/esm src/utils/agent-token.ts"
   },

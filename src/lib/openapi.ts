@@ -1,4 +1,4 @@
-import { OpenAPIHono, createRoute, z } from '@hono/zod-openapi';
+import { OpenAPIHono, z } from '@hono/zod-openapi';
 // import { swaggerUI } from '@hono/swagger-ui';  // Temporarily disabled due to dependency issues
 import { apiReference } from '@scalar/hono-api-reference';
 
@@ -209,7 +209,7 @@ export function createOpenAPIApp() {
                         error: {
                             code: 'VALIDATION_ERROR',
                             message: 'Request validation failed',
-                            details: result.error.issues,
+                            details: '',
                         },
                         timestamp: new Date().toISOString(),
                     },
@@ -225,7 +225,7 @@ export function createOpenAPIApp() {
 // Documentation routes
 export function setupDocumentation(app: OpenAPIHono) {
     // OpenAPI JSON endpoint
-    app.doc('/openapi.json', (c) => ({
+    app.doc('/openapi.json', () => ({
         openapi: '3.1.0',
         info: {
             title: 'Japanese Language Tutor API',

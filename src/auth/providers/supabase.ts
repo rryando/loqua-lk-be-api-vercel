@@ -26,7 +26,20 @@ export class SupabaseAuthProvider extends BaseAuthProvider {
 
     async verifyToken(token: string): Promise<AuthUser | null> {
         try {
-            const { data: { user }, error } = await this.supabase.auth.getUser(token);
+            // Create a new client instance with the token to verify the user
+            const supabaseWithToken = createServerClient(this.supabaseUrl, this.supabaseAnonKey, {
+                global: {
+                    headers: {
+                        Authorization: `Bearer ${token}`
+                    }
+                },
+                cookies: {
+                    getAll() { return []; },
+                    setAll() { /* no-op */ },
+                },
+            });
+
+            const { data: { user }, error } = await supabaseWithToken.auth.getUser();
 
             if (error || !user) {
                 return null;
@@ -58,7 +71,20 @@ export class SupabaseAuthProvider extends BaseAuthProvider {
 
     async signOut(token: string): Promise<void> {
         try {
-            await this.supabase.auth.signOut();
+            // Create a client instance with the token to sign out the specific session
+            const supabaseWithToken = createServerClient(this.supabaseUrl, this.supabaseAnonKey, {
+                global: {
+                    headers: {
+                        Authorization: `Bearer ${token}`
+                    }
+                },
+                cookies: {
+                    getAll() { return []; },
+                    setAll() { /* no-op */ },
+                },
+            });
+
+            await supabaseWithToken.auth.signOut();
         } catch (error) {
             console.error('Supabase sign out error:', error);
         }

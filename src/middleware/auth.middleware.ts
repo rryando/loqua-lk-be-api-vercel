@@ -3,7 +3,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import type { Context, MiddlewareHandler } from 'hono';
 import { env } from 'hono/adapter';
 import { setCookie } from 'hono/cookie';
-import { HTTPException } from 'hono/http-exception';
+// import { HTTPException } from 'hono/http-exception';
 import { DatabaseUser, APIError } from '../types/index';
 import { AuthManager } from '../auth/manager';
 import { SupabaseAuthProvider } from '../auth/providers/supabase';

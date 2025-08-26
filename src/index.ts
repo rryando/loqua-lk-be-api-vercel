@@ -7,26 +7,26 @@ import { createRoute } from '@hono/zod-openapi';
 import { z } from 'zod';
 import { APIError } from './types/index';
 
-// Import OpenAPI route definitions
-import {
-  getUserContextRoute,
-  updateUserContextRoute,
-  getUserProgressRoute
-} from './api/v1/openapi/users-openapi';
-import {
-  createSessionRoute,
-  getUserSessionsRoute
-} from './api/v1/openapi/sessions-openapi';
-import {
-  joinRoomRoute,
-  getActiveRoomsRoute
-} from './api/v1/openapi/rooms-openapi';
-import {
-  agentProgressRoute,
-  agentSessionRoute,
-  agentUserContextRoute,
-  agentHealthRoute,
-} from './api/v1/openapi/agent-openapi';
+// // Import OpenAPI route definitions
+// import {
+//   getUserContextRoute,
+//   updateUserContextRoute,
+//   getUserProgressRoute
+// } from './api/v1/openapi/users-openapi';
+// import {
+//   createSessionRoute,
+//   getUserSessionsRoute
+// } from './api/v1/openapi/sessions-openapi';
+// import {
+//   joinRoomRoute,
+//   getActiveRoomsRoute
+// } from './api/v1/openapi/rooms-openapi';
+// import {
+//   agentProgressRoute,
+//   agentSessionRoute,
+//   agentUserContextRoute,
+//   agentHealthRoute,
+// } from './api/v1/openapi/agent-openapi';
 
 // Import actual route handlers
 import { usersRoutes, sessionsRoutes, roomsRoutes, agentRoutes, conversationsRoutes } from './api/v1/routes/index';
@@ -141,7 +141,7 @@ setupDocumentation(app);
 // Audio file serving endpoint
 app.get('/audio/:filename', async (c) => {
   const filename = c.req.param('filename');
-  
+
   // Simple security check for filename
   if (!filename.match(/^[a-f0-9]{32}\.mp3$/)) {
     const error: APIError = {
