@@ -163,15 +163,12 @@ Generate audio pronunciation for a specific evaluation.
 
 **Audio Generation:**
 - Input: Romaji pronunciation from evaluation
-- Output: Spoken Japanese audio (MP3)
-- Caching: Files stored as MD5 hash of romaji+kanji
-- Performance: Cached files served immediately
+- Output: Spoken Japanese audio (MP3) returned as base64
+- No filesystem storage - audio generated on-demand
 
 **Response Format:**
-- audio_url: Server URL for cached file access
 - audio_data: Complete data URL for direct HTML audio element use
 - audio_base64: Raw base64 data for custom implementations
-- cached: Indicates if audio was retrieved from cache or newly generated
 
 **Use Cases:**
 - Listen to correct pronunciation of practiced phrases

@@ -19,7 +19,12 @@ declare module 'hono' {
 // Helper function to create default agent context
 const createDefaultAgentContext = async (c: Context, requestBody?: any) => {
     const agentId = `auto-agent-${uuidv4()}`;
-    const userId = requestBody?.user_id || requestBody?.userId || 'unknown';
+    const userId = requestBody?.user_id || requestBody?.userId;
+    
+    // Reject invalid user IDs that would cause database constraint violations
+    if (!userId || userId === 'unknown' || userId === 'default_user' || userId === 'null' || userId === 'undefined') {
+        throw new Error(`Invalid user ID provided: ${userId}. Agent context requires a valid user ID from authenticated session.`);
+    }
     const sessionId = requestBody?.session_id || requestBody?.sessionId;
 
     // Minimal safe permissions for auto-initialized contexts
@@ -67,22 +72,21 @@ export const getAgentContext = async (c: Context, autoInitialize: boolean = true
         // Try to parse request body to get context clues
         let requestBody = {};
 
-        try {
-            // Try to get JSON body - this will work if body hasn't been consumed yet
-            requestBody = await c.req.json().catch(() => ({}));
-            console.log(`Successfully parsed request body for context initialization`);
-        } catch (e) {
-            console.warn('Failed to parse request body for context initialization:', e);
-            // Try to extract context hints from URL parameters as fallback
+        // For GET requests (like bootstrap), extract from URL parameters first
+        const userIdFromUrl = c.req.param('user_id') || c.req.query('user_id') || c.req.query('userId');
+        const sessionIdFromUrl = c.req.query('session_id') || c.req.query('sessionId');
+        
+        if (userIdFromUrl) {
+            requestBody = { user_id: userIdFromUrl, session_id: sessionIdFromUrl };
+            console.log('Extracted context from URL parameters');
+        } else {
+            // Fall back to request body for POST requests
             try {
-                const userId = c.req.param('user_id') || c.req.query('user_id') || c.req.query('userId');
-                const sessionId = c.req.query('session_id') || c.req.query('sessionId');
-                if (userId) {
-                    requestBody = { user_id: userId, session_id: sessionId };
-                    console.log('Extracted context from URL parameters');
-                }
-            } catch (urlError) {
-                console.warn('Failed to extract context from URL:', urlError);
+                requestBody = await c.req.json().catch(() => ({}));
+                console.log(`Successfully parsed request body for context initialization`);
+            } catch (e) {
+                console.warn('Failed to parse request body for context initialization:', e);
+                requestBody = {};
             }
         }
 

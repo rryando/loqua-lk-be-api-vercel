@@ -641,7 +641,7 @@ export class UsersController {
             // Get the evaluation record to ensure user owns it and get romaji/kanji
             const { data: evaluation, error: queryError } = await supabase
                 .from('pronunciation_evaluations')
-                .select('user_id, kanji, romaji, audio_url')
+                .select('user_id, kanji, romaji')
                 .eq('id', evaluationId)
                 .single();
 
@@ -680,30 +680,17 @@ export class UsersController {
                 return c.json(error, 400);
             }
 
-            // Generate or get existing audio
+            // Generate audio
             try {
                 const audioResult = await pronunciationService.generateAudio(evaluation.romaji, evaluation.kanji);
-
-                // Convert buffer to base64
-                const audioBase64 = audioResult.buffer.toString('base64');
-                const audioDataUrl = `data:audio/mp3;base64,${audioBase64}`;
-
-                // Update database with audio URL if not already set
-                if (!evaluation.audio_url) {
-                    await supabase
-                        .from('pronunciation_evaluations')
-                        .update({ audio_url: audioResult.url })
-                        .eq('id', evaluationId);
-                }
+                const audioDataUrl = `data:audio/mp3;base64,${audioResult.base64}`;
 
                 return c.json({
                     success: true,
-                    audio_url: audioResult.url,
                     audio_data: audioDataUrl,
-                    audio_base64: audioBase64,
+                    audio_base64: audioResult.base64,
                     kanji: evaluation.kanji,
                     romaji: evaluation.romaji,
-                    cached: !!evaluation.audio_url
                 });
 
             } catch (audioError) {

@@ -20,7 +20,7 @@ export const AgentProgressUpdateSchema = z.object({
 export const AgentSessionCreateSchema = z.object({
     userId: z.string().describe('User ID from LiveKit metadata'),
     sessionId: z.string().optional().describe('Session ID (auto-generated if not provided)'),
-    duration_minutes: z.number().positive(),
+    duration_minutes: z.number().nonnegative(),
     topics_covered: z.array(z.string()),
     new_vocabulary: z.array(z.string()),
     grammar_points: z.array(z.string()),
@@ -30,10 +30,45 @@ export const AgentSessionCreateSchema = z.object({
     next_session_recommendations: z.array(z.string()).optional(),
 });
 
-// Agent User Context Request Schema
+// Agent User Context Request Schema (for retrieval)
 export const AgentUserContextRequestSchema = z.object({
-    userId: z.string().describe('User ID for validation (must match path param)'),
-    sessionId: z.string().optional().describe('Optional session ID for tracking'),
+    user_id: z.string().describe('User ID for validation (must match path param)'),
+    session_id: z.string().optional().describe('Optional session ID for tracking'),
+});
+
+// Agent User Context Update Schema (for updating context)
+export const AgentUserContextUpdateSchema = z.object({
+    user_id: z.string().describe('User ID for validation (must match path param)'),
+    name: z.string().optional().describe('Display name of the user'),
+    preferences: z.object({
+        learning_level: z.string().optional(),
+        learning_goals: z.array(z.string()).optional(),
+        preferred_topics: z.array(z.string()).optional(),
+        practice_frequency: z.string().optional(),
+        session_duration_preference: z.number().optional(),
+        wants_formal_speech: z.boolean().optional(),
+        wants_kanji_practice: z.boolean().optional(),
+        wants_grammar_focus: z.boolean().optional(),
+    }).optional(),
+    progress: z.object({
+        total_sessions: z.number().optional(),
+        total_conversation_time: z.number().optional(),
+        words_learned: z.number().optional(),
+        phrases_practiced: z.number().optional(),
+        pronunciation_score_avg: z.number().optional(),
+        grammar_points_covered: z.number().optional(),
+        achievements_unlocked: z.array(z.string()).optional(),
+        last_session_date: z.string().nullable().optional(),
+        current_streak: z.number().optional(),
+    }).optional(),
+    session_history: z.array(z.object({
+        session_id: z.string(),
+        date: z.string(),
+        duration_minutes: z.number(),
+        topics_covered: z.array(z.string()),
+    })).optional(),
+    created_at: z.string().optional().describe('Creation timestamp'),
+    updated_at: z.string().optional().describe('Last update timestamp'),
 });
 
 // Agent Health Check Schema
@@ -61,6 +96,7 @@ export const AgentSessionCreateResponseSchema = z.object({
 
 export const AgentUserContextResponseSchema = z.object({
     user_id: z.string(),
+    name: z.string().optional().describe('Display name of the user'),
     preferences: z.object({
         learning_level: z.string(),
         learning_goals: z.array(z.string()),
@@ -77,7 +113,7 @@ export const AgentUserContextResponseSchema = z.object({
         words_learned: z.number(),
         phrases_practiced: z.number(),
         pronunciation_score_avg: z.number(),
-        grammar_points_covered: z.array(z.string()),
+        grammar_points_covered: z.number(),
         achievements_unlocked: z.array(z.string()),
         last_session_date: z.string().nullable(),
         current_streak: z.number(),
@@ -93,7 +129,7 @@ export const AgentUserContextResponseSchema = z.object({
     accessed_by: z.object({
         agent_id: z.string(),
         timestamp: z.string(),
-    }),
+    }).optional(),
 });
 
 export const AgentHealthCheckResponseSchema = z.object({
@@ -119,6 +155,7 @@ export const StorePronunciationEvaluationSchema = z.object({
     userId: z.string().min(1, 'User ID is required'),
     sessionId: z.string().optional(),
     evaluation: PronunciationEvaluationSchema,
+    generate_audio: z.boolean().default(false).describe('Whether to generate and return audio data'),
 });
 
 export const GetPronunciationEvaluationsQuerySchema = z.object({
@@ -138,7 +175,11 @@ export const StorePronunciationEvaluationResponseSchema = z.object({
     success: z.literal(true),
     evaluation_id: z.string(),
     created_at: z.string(),
+    updated_at: z.string(),
     message: z.string(),
+    is_update: z.boolean().describe('True if this was an update to existing evaluation'),
+    practice_count: z.number().describe('Number of times this phrase has been practiced'),
+    audio_data: z.string().optional().describe('Base64 encoded audio data for pronunciation'),
 });
 
 export const PronunciationEvaluationItemSchema = z.object({
@@ -151,7 +192,9 @@ export const PronunciationEvaluationItemSchema = z.object({
     evaluation_score: z.number().nullable(),
     evaluation_feedback: z.string().nullable(),
     evaluation_details: z.record(z.any()).nullable(),
+    practice_count: z.number().default(1),
     created_at: z.string(),
+    updated_at: z.string(),
 });
 
 export const GetPronunciationEvaluationsResponseSchema = z.object({
@@ -185,7 +228,7 @@ export const AgentBootstrapResponseSchema = z.object({
     success: z.literal(true),
     user_id: z.string(),
     timestamp: z.string(),
-    
+
     // AI-generated summary (always included)
     ai_summary: z.object({
         compact_summary: z.string(),
@@ -198,7 +241,7 @@ export const AgentBootstrapResponseSchema = z.object({
             has_user_context: z.boolean(),
         }),
     }),
-    
+
     // User authentication data
     user_auth: z.object({
         display_name: z.string().nullable(),
@@ -206,14 +249,14 @@ export const AgentBootstrapResponseSchema = z.object({
         avatar_url: z.string().nullable(),
         user_verified: z.boolean(),
     }),
-    
+
     // Performance metadata
     performance: z.object({
         total_queries: z.number(),
         cache_hits: z.number(),
         execution_time_ms: z.number(),
     }),
-    
+
     // Raw data (optional, only if include_raw_data=true)
     raw_data: z.object({
         user_context: z.object({

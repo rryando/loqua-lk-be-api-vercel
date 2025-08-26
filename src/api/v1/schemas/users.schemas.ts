@@ -140,10 +140,8 @@ export const UserGetEvaluatedPhrasesResponseSchema = z.object({
 // User Pronunciation Audio Response Schema
 export const UserPronunciationAudioResponseSchema = z.object({
     success: z.literal(true),
-    audio_url: z.string().describe('URL path to the cached audio file on the server'),
     audio_data: z.string().describe('Complete data URL with base64 encoded MP3 audio (data:audio/mp3;base64,...)'),
     audio_base64: z.string().describe('Raw base64 encoded MP3 audio data without MIME prefix'),
     kanji: z.string().describe('The original Japanese text'),
     romaji: z.string().describe('The romanized pronunciation'),
-    cached: z.boolean().describe('Whether the audio was retrieved from cache or newly generated'),
 });

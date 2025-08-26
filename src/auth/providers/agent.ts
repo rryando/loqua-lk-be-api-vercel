@@ -1,4 +1,4 @@
-import * as jwt from 'jsonwebtoken';
+import jwt from 'jsonwebtoken';
 import { BaseAuthProvider, AuthUser } from './base.js';
 
 export interface AgentJWTPayload {

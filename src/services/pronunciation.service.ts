@@ -52,30 +52,11 @@ export class PronunciationService {
     }
 
     /**
-     * Generate audio file for romaji pronunciation using OpenAI TTS
-     * Returns both the URL and the audio buffer
+     * Generate audio for romaji pronunciation using OpenAI TTS
+     * Returns audio buffer and base64 data (no filesystem storage)
      */
-    async generateAudio(romaji: string, kanji: string): Promise<{ url: string, buffer: Buffer }> {
+    async generateAudio(romaji: string, kanji: string): Promise<{ buffer: Buffer, base64: string }> {
         try {
-            // Create hash for filename based on romaji + kanji
-            const hash = createHash('md5').update(`${romaji}-${kanji}`).digest('hex');
-            const filename = `${hash}.mp3`;
-            const filepath = path.join(this.audioDir, filename);
-
-            // Check if audio file already exists
-            try {
-                await access(filepath);
-                console.log(`Audio file already exists: ${filename}`);
-                // Read existing file and return buffer
-                const existingBuffer = await readFile(filepath);
-                return {
-                    url: `/audio/${filename}`,
-                    buffer: existingBuffer
-                };
-            } catch {
-                // File doesn't exist, generate it
-            }
-
             console.log(`Generating audio for: ${romaji} (${kanji})`);
 
             // Use OpenAI TTS with female voice
@@ -90,13 +71,13 @@ export class PronunciationService {
             // Convert response to buffer
             const buffer = Buffer.from(await mp3.arrayBuffer());
 
-            // Save to file system
-            await writeFile(filepath, buffer);
+            // Convert to base64
+            const base64 = buffer.toString('base64');
 
-            console.log(`Audio generated successfully: ${filename}`);
+            console.log(`Audio generated successfully for: ${romaji}`);
             return {
-                url: `/audio/${filename}`,
-                buffer: buffer
+                buffer: buffer,
+                base64: base64
             };
 
         } catch (error) {
@@ -216,25 +197,14 @@ Respond with the JSON array now:`;
     }
 
     /**
-     * Get audio URL if it exists, generate if it doesn't
+     * Generate audio base64 for pronunciation (no filesystem storage)
      */
-    async getOrCreateAudioUrl(romaji: string, kanji: string): Promise<string> {
+    async generateAudioBase64(romaji: string, kanji: string): Promise<string> {
         try {
-            const hash = createHash('md5').update(`${romaji}-${kanji}`).digest('hex');
-            const filename = `${hash}.mp3`;
-            const filepath = path.join(this.audioDir, filename);
-
-            // Check if file exists
-            try {
-                await access(filepath);
-                return `/audio/${filename}`;
-            } catch {
-                // Generate audio if it doesn't exist
-                const result = await this.generateAudio(romaji, kanji);
-                return result.url;
-            }
+            const result = await this.generateAudio(romaji, kanji);
+            return result.base64;
         } catch (error) {
-            console.error('Error getting/creating audio URL:', error);
+            console.error('Error generating audio base64:', error);
             throw error;
         }
     }

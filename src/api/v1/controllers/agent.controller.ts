@@ -344,6 +344,57 @@ export class AgentController {
         }
 
         try {
+            // Validate user exists before creating session
+            if (!sessionData.userId || sessionData.userId === 'unknown') {
+                const error: APIError = {
+                    error: {
+                        code: 'INVALID_USER_ID',
+                        message: 'Valid user ID is required to create a session'
+                    },
+                    timestamp: new Date().toISOString()
+                };
+                return c.json(error, 400);
+            }
+
+            // Check if user exists in database
+            const { data: existingUser, error: userCheckError } = await supabase
+                .from('users')
+                .select('user_id')
+                .eq('user_id', sessionData.userId)
+                .single();
+
+            if (userCheckError && userCheckError.code !== 'PGRST116') {
+                console.error('User existence check failed:', userCheckError);
+                const error: APIError = {
+                    error: {
+                        code: 'USER_CHECK_FAILED',
+                        message: 'Failed to verify user existence'
+                    },
+                    timestamp: new Date().toISOString()
+                };
+                return c.json(error, 500);
+            }
+
+            if (!existingUser) {
+                const error: APIError = {
+                    error: {
+                        code: 'USER_NOT_FOUND',
+                        message: 'User must be registered before creating sessions'
+                    },
+                    timestamp: new Date().toISOString()
+                };
+                return c.json(error, 400);
+            }
+
+            // Log zero-duration sessions for monitoring
+            if (sessionData.duration_minutes === 0) {
+                console.warn('Creating session with 0 duration - likely new user or incomplete session tracking', {
+                    userId: sessionData.userId,
+                    sessionId: sessionId,
+                    timestamp: new Date().toISOString()
+                });
+            }
+
             // Create the learning session
             const newSession: Omit<DatabaseLearningSession, 'id' | 'created_at'> = {
                 user_id: sessionData.userId,
@@ -481,10 +532,11 @@ export class AgentController {
     }
 
     /**
-     * Get user context for agent personalization
+     * Get or update user context for agent personalization
      */
     static async getUserContext(c: Context) {
         const userId = c.req.param('user_id');
+        const requestBody = getRequestBody(c);
         const agentContext = await getAgentContext(c);
         const agentInfo = getAgentInfo(c);
         const supabase = getAuthenticatedSupabase(c);
@@ -501,62 +553,213 @@ export class AgentController {
             return c.json(error, 500);
         }
 
+        // Validate user_id matches path param
+        if (requestBody.user_id !== userId) {
+            const error: APIError = {
+                error: {
+                    code: 'USER_ID_MISMATCH',
+                    message: 'user_id in request body must match path parameter'
+                },
+                timestamp: new Date().toISOString()
+            };
+            return c.json(error, 400);
+        }
+
         try {
             const cacheKey = `user_context:${userId}`;
 
-            // Try to get from cache first
-            const userContext = await globalCache.getOrSet(
-                cacheKey,
-                async () => {
-                    let { data, error } = await supabase
-                        .from('user_contexts')
-                        .select('*, users!user_id(display_name)')
-                        .eq('user_id', userId)
-                        .single();
+            // Determine if this is an update request or retrieval request
+            const isUpdateRequest = !!(requestBody.preferences || requestBody.progress ||
+                requestBody.session_history || requestBody.name ||
+                requestBody.created_at || requestBody.updated_at);
 
-                    if (error) {
-                        throw new Error(`Database error: ${error.message}`);
+            if (isUpdateRequest) {
+                // Handle UPDATE operation
+                console.log(`User context update requested by agent ${agentInfo.agentId || agentContext.agentId} for user ${userId}`);
+
+                // First verify user exists
+                const { data: user, error: userError } = await supabase
+                    .from('users')
+                    .select('user_id, display_name')
+                    .eq('user_id', userId)
+                    .single();
+
+                if (userError || !user) {
+                    const error: APIError = {
+                        error: {
+                            code: 'USER_NOT_FOUND',
+                            message: `User not found: ${userId}`
+                        },
+                        timestamp: new Date().toISOString()
+                    };
+                    return c.json(error, 404);
+                }
+
+                // Update display name if provided
+                if (requestBody.name && requestBody.name !== user.display_name) {
+                    const { error: updateUserError } = await supabase
+                        .from('users')
+                        .update({ display_name: requestBody.name })
+                        .eq('user_id', userId);
+
+                    if (updateUserError) {
+                        console.error('Failed to update user display name:', updateUserError);
                     }
+                }
 
-                    return data;
-                },
-                300000 // 5 minutes cache
-            );
+                // Prepare context update data
+                const updateData: any = {
+                    user_id: userId,
+                    updated_at: new Date().toISOString(),
+                };
 
-            // Record successful request
-            globalHealthMonitor.recordRequest(true, Date.now() - startTime);
+                if (requestBody.preferences) {
+                    updateData.preferences = requestBody.preferences;
+                }
+                if (requestBody.progress) {
+                    updateData.progress = requestBody.progress;
+                }
+                if (requestBody.session_history) {
+                    updateData.session_history = requestBody.session_history;
+                }
+                if (requestBody.created_at) {
+                    updateData.created_at = requestBody.created_at;
+                }
 
-            // Log agent action for audit
-            console.log(`User context accessed by agent ${agentInfo.agentId || agentContext.agentId} for user ${userId}`);
-            console.log(userContext)
-            console.log(userContext.users)
+                // Perform upsert
+                const { data: upsertedContext, error: upsertError } = await supabase
+                    .from('user_contexts')
+                    .upsert(updateData, { onConflict: 'user_id' })
+                    .select('*, users!user_id(display_name)')
+                    .single();
 
-            return c.json({
-                name: userContext.users?.display_name,
-                user_id: userContext.user_id,
-                preferences: userContext.preferences,
-                progress: userContext.progress,
-                session_history: userContext.session_history,
-                created_at: userContext.created_at,
-                updated_at: userContext.updated_at,
-                accessed_by: {
-                    agent_id: agentInfo.agentId || agentContext.agentId,
-                    timestamp: new Date().toISOString(),
-                },
-                cached: true, // Indicate this might be cached data
-                agent_context_initialized: agentContext.isAutoInitialized || false
-            });
+                if (upsertError) {
+                    throw new Error(`Failed to upsert user context: ${upsertError.message}`);
+                }
+
+                // Clear cache after update
+                await globalCache.delete(cacheKey);
+
+                // Record successful request
+                globalHealthMonitor.recordRequest(true, Date.now() - startTime);
+
+                return c.json({
+                    user_id: upsertedContext.user_id,
+                    name: requestBody.name || upsertedContext.users?.display_name,
+                    preferences: upsertedContext.preferences,
+                    progress: upsertedContext.progress,
+                    session_history: upsertedContext.session_history,
+                    created_at: upsertedContext.created_at,
+                    updated_at: upsertedContext.updated_at,
+                    accessed_by: {
+                        agent_id: agentInfo.agentId || agentContext.agentId,
+                        timestamp: new Date().toISOString(),
+                    },
+                });
+            } else {
+                // Handle RETRIEVAL operation (existing logic)
+                const userContext = await globalCache.getOrSet(
+                    cacheKey,
+                    async () => {
+                        let { data, error } = await supabase
+                            .from('user_contexts')
+                            .select('*, users!user_id(display_name)')
+                            .eq('user_id', userId)
+                            .single();
+
+                        if (error && error.code !== 'PGRST116') {
+                            throw new Error(`Database error: ${error.message}`);
+                        }
+
+                        // If no user context exists, create default one
+                        if (!data) {
+                            // First verify user exists
+                            const { data: user, error: userError } = await supabase
+                                .from('users')
+                                .select('user_id, display_name')
+                                .eq('user_id', userId)
+                                .single();
+
+                            if (userError || !user) {
+                                throw new Error(`User not found: ${userId}`);
+                            }
+
+                            // Create default user context
+                            const defaultContext = {
+                                user_id: userId,
+                                preferences: {
+                                    learning_level: "beginner",
+                                    learning_goals: ["general"],
+                                    preferred_topics: ["conversation"],
+                                    practice_frequency: "daily",
+                                    session_duration_preference: 30,
+                                    wants_formal_speech: false,
+                                    wants_kanji_practice: true,
+                                    wants_grammar_focus: true
+                                },
+                                progress: {
+                                    total_sessions: 0,
+                                    total_conversation_time: 0,
+                                    words_learned: 0,
+                                    phrases_practiced: 0,
+                                    pronunciation_score_avg: 0.0,
+                                    grammar_points_covered: 0,
+                                    achievements_unlocked: [],
+                                    last_session_date: null,
+                                    current_streak: 0
+                                },
+                                session_history: []
+                            };
+
+                            const { data: newContext, error: createError } = await supabase
+                                .from('user_contexts')
+                                .insert(defaultContext)
+                                .select('*, users!user_id(display_name)')
+                                .single();
+
+                            if (createError) {
+                                throw new Error(`Failed to create user context: ${createError.message}`);
+                            }
+
+                            return newContext;
+                        }
+
+                        return data;
+                    },
+                    300000 // 5 minutes cache
+                );
+
+                // Record successful request
+                globalHealthMonitor.recordRequest(true, Date.now() - startTime);
+
+                // Log agent action for audit
+                console.log(`User context accessed by agent ${agentInfo.agentId || agentContext.agentId} for user ${userId}`);
+
+                return c.json({
+                    user_id: userContext.user_id,
+                    name: userContext.users?.display_name,
+                    preferences: userContext.preferences,
+                    progress: userContext.progress,
+                    session_history: userContext.session_history,
+                    created_at: userContext.created_at,
+                    updated_at: userContext.updated_at,
+                    accessed_by: {
+                        agent_id: agentInfo.agentId || agentContext.agentId,
+                        timestamp: new Date().toISOString(),
+                    },
+                });
+            }
         } catch (err) {
             // Record failed request
             globalHealthMonitor.recordRequest(false, Date.now() - startTime);
 
-            console.error('Agent context retrieval error:', err);
+            console.error('Agent context operation error:', err);
 
             if (err instanceof Error && err.message.includes('not found')) {
                 const apiError: APIError = {
                     error: {
-                        code: 'USER_CONTEXT_NOT_FOUND',
-                        message: 'User context not found'
+                        code: 'USER_NOT_FOUND',
+                        message: 'User not found'
                     },
                     timestamp: new Date().toISOString()
                 };
@@ -638,72 +841,169 @@ export class AgentController {
         try {
             const { userId, evaluation } = evaluationData;
 
-            // Application-level duplicate check (same user + kanji within 24 hours)
-            const oneDayAgo = new Date();
-            oneDayAgo.setDate(oneDayAgo.getDate() - 1);
-
-            const { data: existingEvaluation } = await supabase
-                .from('pronunciation_evaluations')
-                .select('id, created_at')
-                .eq('user_id', userId)
-                .eq('kanji', evaluation.kanji)
-                .gte('created_at', oneDayAgo.toISOString())
-                .single();
-
-            if (existingEvaluation) {
+            // Validate user exists before creating evaluation
+            if (!userId || userId === 'unknown' || userId === 'default_user') {
                 const error: APIError = {
                     error: {
-                        code: 'DUPLICATE_EVALUATION',
-                        message: 'Evaluation for this phrase already exists today'
-                    },
-                    timestamp: new Date().toISOString()
-                };
-                return c.json(error, 409);
-            }
-
-            // Create pronunciation evaluation
-            const newEvaluation = {
-                user_id: userId,
-                kanji: evaluation.kanji,
-                romaji: evaluation.romaji,
-                translation: evaluation.translation,
-                topic: evaluation.topic,
-                user_pronunciation: evaluation.user_pronunciation,
-                evaluation_score: evaluation.evaluation_score || null,
-                evaluation_feedback: evaluation.evaluation_feedback || null,
-                evaluation_details: evaluation.evaluation_details || null,
-            };
-
-            const { data: createdEvaluation, error: insertError } = await supabase
-                .from('pronunciation_evaluations')
-                .insert(newEvaluation)
-                .select('id, created_at')
-                .single();
-
-            if (insertError) {
-                console.error('Pronunciation evaluation creation error:', insertError);
-                const error: APIError = {
-                    error: {
-                        code: 'INVALID_EVALUATION_DATA',
-                        message: 'Required fields missing: kanji, romaji, translation'
+                        code: 'INVALID_USER_ID',
+                        message: 'Valid user ID is required to store pronunciation evaluation'
                     },
                     timestamp: new Date().toISOString()
                 };
                 return c.json(error, 400);
             }
 
+            // Check if user exists in database
+            const { data: existingUser, error: userCheckError } = await supabase
+                .from('users')
+                .select('user_id')
+                .eq('user_id', userId)
+                .single();
+
+            if (userCheckError && userCheckError.code !== 'PGRST116') {
+                console.error('User existence check failed:', userCheckError);
+                const error: APIError = {
+                    error: {
+                        code: 'USER_CHECK_FAILED',
+                        message: 'Failed to verify user existence'
+                    },
+                    timestamp: new Date().toISOString()
+                };
+                return c.json(error, 500);
+            }
+
+            if (!existingUser) {
+                const error: APIError = {
+                    error: {
+                        code: 'USER_NOT_FOUND',
+                        message: 'User must be registered before storing pronunciation evaluations'
+                    },
+                    timestamp: new Date().toISOString()
+                };
+                return c.json(error, 400);
+            }
+
+            // Check for existing evaluation (same user + kanji + romaji + translation)
+            const { data: existingEvaluation } = await supabase
+                .from('pronunciation_evaluations')
+                .select('id, practice_count, created_at, updated_at')
+                .eq('user_id', userId)
+                .eq('kanji', evaluation.kanji)
+                .eq('romaji', evaluation.romaji)
+                .eq('translation', evaluation.translation)
+                .single();
+
+            let resultEvaluation;
+            let isUpdate = false;
+            let practiceCount = 1;
+
+            if (existingEvaluation) {
+                // Update existing evaluation with incremented practice count
+                isUpdate = true;
+                practiceCount = (existingEvaluation.practice_count || 0) + 1;
+
+                const updateData = {
+                    user_pronunciation: evaluation.user_pronunciation,
+                    evaluation_score: evaluation.evaluation_score || null,
+                    evaluation_feedback: evaluation.evaluation_feedback || null,
+                    evaluation_details: evaluation.evaluation_details || null,
+                    topic: evaluation.topic, // Allow topic updates
+                    practice_count: practiceCount,
+                    updated_at: new Date().toISOString(),
+                };
+
+                const { data: updatedEvaluation, error: updateError } = await supabase
+                    .from('pronunciation_evaluations')
+                    .update(updateData)
+                    .eq('id', existingEvaluation.id)
+                    .select('id, created_at, updated_at, practice_count')
+                    .single();
+
+                if (updateError) {
+                    console.error('Pronunciation evaluation update error:', updateError);
+                    const error: APIError = {
+                        error: {
+                            code: 'UPDATE_FAILED',
+                            message: 'Failed to update pronunciation evaluation'
+                        },
+                        timestamp: new Date().toISOString()
+                    };
+                    return c.json(error, 500);
+                }
+
+                resultEvaluation = updatedEvaluation;
+            } else {
+                // Create new pronunciation evaluation
+                const newEvaluation = {
+                    user_id: userId,
+                    kanji: evaluation.kanji,
+                    romaji: evaluation.romaji,
+                    translation: evaluation.translation,
+                    topic: evaluation.topic,
+                    user_pronunciation: evaluation.user_pronunciation,
+                    evaluation_score: evaluation.evaluation_score || null,
+                    evaluation_feedback: evaluation.evaluation_feedback || null,
+                    evaluation_details: evaluation.evaluation_details || null,
+                    practice_count: 1,
+                };
+
+                const { data: createdEvaluation, error: insertError } = await supabase
+                    .from('pronunciation_evaluations')
+                    .insert(newEvaluation)
+                    .select('id, created_at, updated_at, practice_count')
+                    .single();
+
+                if (insertError) {
+                    console.error('Pronunciation evaluation creation error:', insertError);
+                    const error: APIError = {
+                        error: {
+                            code: 'INVALID_EVALUATION_DATA',
+                            message: 'Required fields missing: kanji, romaji, translation'
+                        },
+                        timestamp: new Date().toISOString()
+                    };
+                    return c.json(error, 400);
+                }
+
+                resultEvaluation = createdEvaluation;
+            }
+
+            // Generate audio if requested
+            let audioData: string | undefined;
+            if (evaluationData.generate_audio) {
+                try {
+                    const { pronunciationService } = await import('../../../services/pronunciation.service.js');
+                    audioData = await pronunciationService.generateAudioBase64(evaluation.romaji, evaluation.kanji);
+                } catch (audioError) {
+                    console.error('Audio generation failed:', audioError);
+                    // Don't fail the whole request if audio generation fails
+                }
+            }
+
             // Record successful request
             globalHealthMonitor.recordRequest(true, Date.now() - startTime);
 
             // Log agent action for audit
-            console.log(`Pronunciation evaluation stored by agent ${agentInfo.agentId || agentContext.agentId} for user ${userId}`);
+            const action = isUpdate ? 'updated' : 'created';
+            console.log(`Pronunciation evaluation ${action} by agent ${agentInfo.agentId || agentContext.agentId} for user ${userId}, practice count: ${practiceCount}`);
 
-            return c.json({
+            const response: any = {
                 success: true,
-                evaluation_id: createdEvaluation.id,
-                created_at: createdEvaluation.created_at,
-                message: 'Pronunciation evaluation stored successfully'
-            });
+                evaluation_id: resultEvaluation.id,
+                created_at: resultEvaluation.created_at,
+                updated_at: resultEvaluation.updated_at || resultEvaluation.created_at,
+                message: isUpdate
+                    ? `Pronunciation evaluation updated successfully (practice count: ${practiceCount})`
+                    : 'Pronunciation evaluation created successfully',
+                is_update: isUpdate,
+                practice_count: practiceCount,
+            };
+
+            if (audioData) {
+                response.audio_data = audioData;
+            }
+
+            return c.json(response);
 
         } catch (err) {
             // Record failed request

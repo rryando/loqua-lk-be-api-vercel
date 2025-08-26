@@ -14,6 +14,9 @@ import {
     GetEvaluatedPhrasesQuerySchema,
     GetEvaluatedPhrasesResponseSchema,
     AgentBootstrapResponseSchema,
+    AgentUserContextRequestSchema,
+    AgentUserContextUpdateSchema,
+    AgentUserContextResponseSchema,
 } from '../schemas/agent.schemas.js';
 
 // Agent Progress Update Route
@@ -215,85 +218,74 @@ export const agentUserContextRoute = createRoute({
     method: 'post',
     path: '/user/{user_id}/context',
     tags: ['Agent'],
-    summary: 'Get user context (Agent)',
+    summary: 'Get or Update user context (Agent)',
     description: `
-Retrieve user learning context for personalization during agent sessions.
+Retrieve or update user learning context for personalization during agent sessions.
 
-**Agent Use Case:**
-The Python agent calls this endpoint when a user joins a LiveKit room to:
-- Get user's learning level and preferences
-- Understand user's progress and history
-- Personalize conversation topics and difficulty
-- Access achievement history for motivation
+**Modes of Operation:**
+
+**1. Retrieval Mode (minimal payload):**
+Send minimal payload to retrieve user context:
+\`\`\`json
+{
+  "user_id": "uuid",
+  "session_id": "optional"
+}
+\`\`\`
+
+**2. Update Mode (full payload):**
+Send full context payload to update user data:
+\`\`\`json
+{
+  "user_id": "uuid",
+  "name": "Display Name", 
+  "preferences": {...},
+  "progress": {...},
+  "session_history": [...],
+  "created_at": "timestamp",
+  "updated_at": "timestamp"
+}
+\`\`\`
+
+**Agent Use Cases:**
+- Get user's learning level and preferences when user joins session
+- Update user progress and preferences during/after sessions
+- Create default context for new users
+- Sync user data changes from Python agent
 
 **Security:**
 - Requires agent service account JWT with 'user.context' permission
-- Agent must provide userId in request body for validation
+- Agent must provide matching userId in request body and path param
 - Returns comprehensive user learning profile
 
 **Integration with LiveKit:**
 1. User joins LiveKit room with metadata containing userId
-2. Agent extracts userId from room metadata
-3. Agent calls this endpoint to get user context
+2. Agent extracts userId from room metadata  
+3. Agent calls this endpoint to get/update user context
 4. Agent personalizes session based on user data
   `,
     request: {
         params: z.object({
-            user_id: z.string().describe('User ID to retrieve context for'),
+            user_id: z.string().describe('User ID to retrieve/update context for'),
         }),
         body: {
             content: {
                 'application/json': {
-                    schema: z.object({
-                        user_id: z.string().describe('User ID for validation (must match path param)'),
-                        session_id: z.string().optional().describe('Optional session ID for tracking'),
-                    }),
+                    schema: z.union([
+                        AgentUserContextRequestSchema,
+                        AgentUserContextUpdateSchema
+                    ]).describe('Either minimal request for retrieval or full payload for update'),
                 },
             },
-            description: 'Agent context request with user validation',
+            description: 'Agent context request (retrieval) or update payload (update)',
         },
     },
     responses: {
         200: {
-            description: 'User context retrieved successfully',
+            description: 'User context retrieved or updated successfully',
             content: {
                 'application/json': {
-                    schema: z.object({
-                        user_id: z.string(),
-                        preferences: z.object({
-                            learning_level: z.string(),
-                            learning_goals: z.array(z.string()),
-                            preferred_topics: z.array(z.string()),
-                            practice_frequency: z.string(),
-                            session_duration_preference: z.number(),
-                            wants_formal_speech: z.boolean(),
-                            wants_kanji_practice: z.boolean(),
-                            wants_grammar_focus: z.boolean(),
-                        }),
-                        progress: z.object({
-                            total_sessions: z.number(),
-                            total_conversation_time: z.number(),
-                            words_learned: z.number(),
-                            phrases_practiced: z.number(),
-                            pronunciation_score_avg: z.number(),
-                            grammar_points_covered: z.array(z.string()),
-                            achievements_unlocked: z.array(z.string()),
-                            last_session_date: z.string().nullable(),
-                            current_streak: z.number(),
-                        }),
-                        session_history: z.array(z.object({
-                            session_id: z.string(),
-                            date: z.string(),
-                            duration_minutes: z.number(),
-                            topics_covered: z.array(z.string()),
-                        })),
-                        created_at: z.string(),
-                        updated_at: z.string(),
-                        accessed_by: z.object({
-                            agent_id: z.string(),
-                            timestamp: z.string(),
-                        }),
-                    }),
+                    schema: AgentUserContextResponseSchema,
                 },
             },
         },
@@ -645,25 +637,39 @@ export const agentStorePronunciationEvaluationRoute = createRoute({
     tags: ['Agent'],
     summary: 'Store pronunciation evaluation (Agent)',
     description: `
-Store a new pronunciation evaluation result for flashcard review.
+Store or update pronunciation evaluation result with practice count tracking.
 
 **Agent Use Case:**
 The Python agent calls this endpoint after evaluating user pronunciation to:
 - Store evaluation results for user progress tracking
 - Enable flashcard system for pronunciation practice
-- Prevent duplicate evaluations within 24 hours
+- Track practice frequency with automatic count incrementation
+- Optionally generate pronunciation audio on-demand
+
+**Upsert Behavior:**
+- Creates new evaluation if phrase combination doesn't exist
+- Updates existing evaluation and increments practice_count if found
+- No more 409 conflicts - supports repeated practice of same phrases
+- Tracks user improvement over time with historical data
+
+**Audio Generation:**
+- Set generate_audio: true to receive base64 audio data
+- Uses OpenAI TTS with Japanese female voice
+- Returns audio directly (no filesystem storage)
+- Audio data included in response for immediate use
 
 **Security:**
 - Requires agent service account JWT 
 - Agent can store evaluations for any user (for agent operations)
 - Validates user exists in database
-- Application-level duplicate prevention (same kanji within 24h)
+- Tracks evaluation uniqueness by user + kanji + romaji + translation
 
 **Integration with Agent:**
 1. Agent evaluates user pronunciation using STT/analysis
-2. Agent calls this endpoint to store results
-3. System prevents duplicates automatically
-4. Data becomes available for flashcard generation
+2. Agent calls this endpoint to store/update results
+3. System automatically handles create vs update logic
+4. Optional audio generation for immediate pronunciation feedback
+5. Data becomes available for flashcard generation and progress tracking
   `,
     request: {
         body: {
