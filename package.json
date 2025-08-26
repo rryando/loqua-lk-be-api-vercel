@@ -3,7 +3,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build --mode client && vite build",
+    "build": "vite build",
     "generate-agent-token": "node --import tsx/esm src/utils/agent-token.ts"
   },
   "dependencies": {
