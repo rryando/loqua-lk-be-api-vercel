@@ -91,7 +91,17 @@ export const supabaseMiddleware = (): MiddlewareHandler => {
 
     const cookieHandler = {
       getAll() {
-        return parseCookieHeader(c.req.header('Cookie') ?? '');
+        const cookies = parseCookieHeader(c.req.header('Cookie') ?? '');
+        // Ensure value is never undefined to match the new interface
+        return cookies.map(cookie => ({
+          name: cookie.name,
+          value: cookie.value ?? ''
+        }));
+      },
+      get(name: string) {
+        const cookies = parseCookieHeader(c.req.header('Cookie') ?? '');
+        const cookie = cookies.find(c => c.name === name);
+        return cookie?.value ?? null;
       },
       setAll(cookiesToSet: any[]) {
         cookiesToSet.forEach(({ name, value, options }) => {

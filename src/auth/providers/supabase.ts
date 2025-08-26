@@ -1,5 +1,5 @@
-import { createServerClient } from '@supabase/ssr';
-import { SupabaseClient } from '@supabase/supabase-js';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { SupabaseClient, createClient } from '@supabase/supabase-js';
 import { BaseAuthProvider, AuthUser, AuthSession } from './base';
 
 export class SupabaseAuthProvider extends BaseAuthProvider {
@@ -11,6 +11,7 @@ export class SupabaseAuthProvider extends BaseAuthProvider {
         private supabaseAnonKey: string,
         cookieHandler?: {
             getAll(): { name: string; value: string }[];
+            get(name: string): string | null;
             setAll(cookies: { name: string; value: string; options?: any }[]): void;
         }
     ) {
@@ -26,19 +27,20 @@ export class SupabaseAuthProvider extends BaseAuthProvider {
 
     async verifyToken(token: string): Promise<AuthUser | null> {
         try {
-            // Create a new client instance with the token to verify the user
-            const supabaseWithToken = createServerClient(this.supabaseUrl, this.supabaseAnonKey, {
+            // Use the standard createClient for token verification to avoid SSR cookie complexity
+            const supabaseWithToken = createClient(this.supabaseUrl, this.supabaseAnonKey, {
                 global: {
                     headers: {
                         Authorization: `Bearer ${token}`
                     }
                 },
-                cookies: {
-                    getAll() { return []; },
-                    setAll() { /* no-op */ },
-                },
+                auth: {
+                    persistSession: false,
+                    autoRefreshToken: false
+                }
             });
 
+            // Use getUser() which works correctly with the standard client
             const { data: { user }, error } = await supabaseWithToken.auth.getUser();
 
             if (error || !user) {
@@ -71,22 +73,24 @@ export class SupabaseAuthProvider extends BaseAuthProvider {
 
     async signOut(token: string): Promise<void> {
         try {
-            // Create a client instance with the token to sign out the specific session
-            const supabaseWithToken = createServerClient(this.supabaseUrl, this.supabaseAnonKey, {
+            // Use the standard createClient for signout to avoid SSR cookie complexity
+            const supabaseWithToken = createClient(this.supabaseUrl, this.supabaseAnonKey, {
                 global: {
                     headers: {
                         Authorization: `Bearer ${token}`
                     }
                 },
-                cookies: {
-                    getAll() { return []; },
-                    setAll() { /* no-op */ },
-                },
+                auth: {
+                    persistSession: false,
+                    autoRefreshToken: false
+                }
             });
 
+            // Standard signOut method
             await supabaseWithToken.auth.signOut();
         } catch (error) {
             console.error('Supabase sign out error:', error);
+            // Fallback: even if signOut fails, the token verification will fail on next request
         }
     }
 

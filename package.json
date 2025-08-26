@@ -1,14 +1,20 @@
 {
   "name": "hono-vite-jsx",
   "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "start": "vercel dev",
+    "deploy": "vercel deploy",
+    "generate-agent-token": "node --import tsx/esm src/utils/agent-token.ts"
+  },
   "dependencies": {
     "@hono/node-server": "^1.12.2",
     "@hono/swagger-ui": "^0.5.2",
     "@hono/zod-openapi": "^0.9.9",
     "@hono/zod-validator": "^0.2.2",
     "@scalar/hono-api-reference": "^0.5.112",
-    "@supabase/ssr": "^0.5.2",
-    "@supabase/supabase-js": "^2.56.0",
+    "@supabase/ssr": "^0.6.0",
+    "@supabase/supabase-js": "^2.43.4",
     "hono": "^4.9.2",
     "jsonwebtoken": "^9.0.2",
     "livekit-server-sdk": "^2.0.5",
