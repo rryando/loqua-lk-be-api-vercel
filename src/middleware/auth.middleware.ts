@@ -94,9 +94,19 @@ export const supabaseMiddleware = (): MiddlewareHandler => {
         return parseCookieHeader(c.req.header('Cookie') ?? '');
       },
       setAll(cookiesToSet: any[]) {
-        cookiesToSet.forEach(({ name, value, options }) =>
-          setCookie(c, name, value, options as any)
-        );
+        cookiesToSet.forEach(({ name, value, options }) => {
+          try {
+            // Check if we can still modify the response
+            if (c.finalized) {
+              console.warn('Response already finalized, skipping cookie:', name);
+              return;
+            }
+            setCookie(c, name, value, options as any);
+          } catch (error) {
+            // Log the error but don't throw to prevent app crashes
+            console.warn('Failed to set cookie:', name, error instanceof Error ? error.message : error);
+          }
+        });
       },
     };
 

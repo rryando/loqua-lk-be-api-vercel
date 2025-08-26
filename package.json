@@ -3,6 +3,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "start": "vercel dev",
+    "deploy": "vercel",
     "build": "vite build",
     "generate-agent-token": "node --import tsx/esm src/utils/agent-token.ts"
   },
@@ -29,6 +31,7 @@
     "@types/uuid": "^9.0.7",
     "tsx": "^4.20.4",
     "typescript": "^5.3.3",
+    "vercel": "^46.0.2",
     "vite": "^5.4.2"
   }
 }
