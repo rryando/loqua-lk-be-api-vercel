@@ -20,7 +20,7 @@ export const SuccessResponseSchema = z.object({
 // User schemas
 export const UserPreferencesSchema = z.object({
     learning_level: z.enum(["absolute_beginner", "beginner", "elementary", "intermediate", "upper_intermediate", "advanced"]),
-    learning_goals: z.array(z.enum(["conversation", "travel", "business", "anime_manga", "culture", "jlpt_prep", "general"])),
+    learning_goals: z.array(z.string()),
     preferred_topics: z.array(z.string()),
     practice_frequency: z.string(),
     session_duration_preference: z.number().positive(),

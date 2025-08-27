@@ -478,7 +478,7 @@ export class UsersController {
 
             let query = supabase
                 .from('pronunciation_evaluations')
-                .select('id, kanji, romaji, translation, topic, created_at, evaluation_score')
+                .select('id, kanji, romaji, translation, topic, created_at, evaluation_score, translation_breakdown')
                 .eq('user_id', requestedUserId)
                 .gte('created_at', dateThreshold.toISOString())
                 .order('created_at', { ascending: false });
@@ -528,7 +528,8 @@ export class UsersController {
                         topic: evaluation.topic,
                         latest_evaluation_date: evaluation.created_at,
                         best_score: evaluation.evaluation_score || existing?.best_score || null,
-                        evaluation_count: (existing?.evaluation_count || 0) + 1
+                        evaluation_count: (existing?.evaluation_count || 0) + 1,
+                        translation_breakdown: evaluation.translation_breakdown
                     });
                 }
             });
@@ -538,7 +539,8 @@ export class UsersController {
             // Check if any phrases need enhancement (have dummy data)
             const needsEnhancement = evaluatedPhrases.filter(phrase =>
                 phrase.romaji === 'pronunciation_needed' ||
-                phrase.translation === 'translation_needed'
+                phrase.translation === 'translation_needed' ||
+                !phrase.translation_breakdown
             );
 
             if (needsEnhancement.length > 0) {
@@ -549,45 +551,52 @@ export class UsersController {
                     const enhancementRequests: EnhancementRequest[] = needsEnhancement.map(phrase => ({
                         kanji: phrase.kanji,
                         currentRomaji: phrase.romaji,
-                        currentTranslation: phrase.translation
+                        currentTranslation: phrase.translation,
+                        translationBreakdown: phrase.translation_breakdown
                     }));
 
                     // Get enhanced data from OpenAI
                     const enhancedResults = await pronunciationService.enhancePronunciationData(enhancementRequests);
-
                     // Update database with enhanced data
                     for (let i = 0; i < enhancedResults.length; i++) {
                         const enhanced = enhancedResults[i];
                         const original = needsEnhancement[i];
 
                         // Update the database if we got valid enhanced data
-                        if (enhanced.romaji !== 'pronunciation_needed' && enhanced.translation !== 'translation_needed') {
-                            const updateData: any = {};
 
-                            if (original.romaji === 'pronunciation_needed') {
-                                updateData.romaji = enhanced.romaji;
-                            }
-                            if (original.translation === 'translation_needed') {
-                                updateData.translation = enhanced.translation;
-                            }
+                        const updateData: any = {};
 
-                            // Update the database record
-                            await supabase
-                                .from('pronunciation_evaluations')
-                                .update(updateData)
-                                .eq('user_id', requestedUserId)
-                                .eq('kanji', enhanced.kanji);
-
-                            // Update the local data
-                            const phraseIndex = evaluatedPhrases.findIndex(p => p.kanji === enhanced.kanji);
-                            if (phraseIndex !== -1) {
-                                evaluatedPhrases[phraseIndex] = {
-                                    ...evaluatedPhrases[phraseIndex],
-                                    romaji: enhanced.romaji,
-                                    translation: enhanced.translation
-                                };
-                            }
+                        if (original.romaji === 'pronunciation_needed') {
+                            updateData.romaji = enhanced.romaji;
                         }
+                        if (original.translation === 'translation_needed') {
+                            updateData.translation = enhanced.translation;
+                        }
+
+
+                        updateData.translation_breakdown = enhanced.translationBreakdown;
+                        updateData.topic = enhanced.topic;
+
+
+                        // Update the database record
+                        await supabase
+                            .from('pronunciation_evaluations')
+                            .update(updateData)
+                            .eq('user_id', requestedUserId)
+                            .eq('kanji', enhanced.kanji);
+
+                        // Update the local data
+                        const phraseIndex = evaluatedPhrases.findIndex(p => p.kanji === enhanced.kanji);
+                        if (phraseIndex !== -1) {
+                            evaluatedPhrases[phraseIndex] = {
+                                ...evaluatedPhrases[phraseIndex],
+                                romaji: enhanced.romaji,
+                                translation: enhanced.translation,
+                                translation_breakdown: enhanced.translationBreakdown,
+                                topic: enhanced.topic
+                            };
+                        }
+
                     }
 
                     console.log(`Successfully enhanced ${enhancedResults.length} phrases`);
@@ -606,7 +615,8 @@ export class UsersController {
                 best_score: phrase.best_score,
                 latest_evaluation_date: phrase.latest_evaluation_date,
                 topic: phrase.topic,
-                evaluation_count: phrase.evaluation_count
+                evaluation_count: phrase.evaluation_count,
+                translation_breakdown: phrase.translation_breakdown
             }));
 
             return c.json({

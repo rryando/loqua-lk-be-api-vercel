@@ -28,7 +28,9 @@ Get pronunciation evaluations for the authenticated user.
 - Results ordered by most recent evaluations first
 
 **Query Parameters:**
-- \`topic\`: Filter evaluations by learning topic
+- \`topic\`: Filter evaluations by legacy topic string
+- \`topic_id\`: Filter evaluations by specific topic ID
+- \`category\`: Filter evaluations by topic category (conversation, business, academic, casual, technical)
 - \`limit\`: Number of results (default: 50, max: 100)
 - \`offset\`: Pagination offset (default: 0)
 - \`since_date\`: ISO date to filter recent evaluations
@@ -90,7 +92,9 @@ Get list of phrases that have been evaluated for pronunciation practice review.
 - Useful for tracking which phrases have been practiced
 
 **Query Parameters:**
-- \`topic\`: Filter phrases by learning topic
+- \`topic\`: Filter phrases by legacy topic string
+- \`topic_id\`: Filter phrases by specific topic ID
+- \`category\`: Filter phrases by topic category (conversation, business, academic, casual, technical)
 - \`days_back\`: Days to look back for evaluations (default: 7, max: 30)
 
 **Data Processing:**

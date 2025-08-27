@@ -2,8 +2,8 @@ import { z } from 'zod';
 
 // User Preferences Schema
 export const UserPreferencesSchema = z.object({
-    learning_level: z.enum(["absolute_beginner", "beginner", "elementary", "intermediate", "upper_intermediate", "advanced"]),
-    learning_goals: z.array(z.enum(["conversation", "travel", "business", "anime_manga", "culture", "jlpt_prep", "general"])),
+    learning_level: z.string(),
+    learning_goals: z.array(z.string()),
     preferred_topics: z.array(z.string()),
     practice_frequency: z.string(),
     session_duration_preference: z.number().positive(),
@@ -88,15 +88,39 @@ export const ProgressAnalyticsSchema = z.object({
 
 // User Pronunciation Evaluation Schemas
 export const UserGetPronunciationEvaluationsQuerySchema = z.object({
-    topic: z.string().optional(),
+    topic: z.string().optional(), // Legacy topic string filter
+    topic_id: z.string().optional(), // New topic_id filter
+    category: z.string().optional(),
     limit: z.coerce.number().positive().max(100).default(50),
     offset: z.coerce.number().nonnegative().default(0),
     since_date: z.string().datetime().optional(),
 });
 
 export const UserGetEvaluatedPhrasesQuerySchema = z.object({
-    topic: z.string().optional(),
+    topic: z.string().optional(), // Legacy topic string filter
+    topic_id: z.string().optional(), // New topic_id filter
+    category: z.string().optional(),
     days_back: z.coerce.number().positive().max(30).default(7),
+});
+
+// Translation Breakdown Schemas
+export const TranslationSegmentSchema = z.object({
+    text: z.string(),
+    translation: z.string(),
+    confidence: z.number().min(0).max(1),
+    position: z.number().nonnegative(),
+});
+
+export const TranslationBreakdownSchema = z.object({
+    originalText: z.string(),
+    segments: z.array(TranslationSegmentSchema),
+});
+
+export const TopicSchema = z.object({
+    id: z.string(),
+    name: z.string(),
+    category: z.string(),
+    parent_id: z.string().nullable(),
 });
 
 // User Pronunciation Evaluation Response Schemas
@@ -105,7 +129,10 @@ export const UserPronunciationEvaluationItemSchema = z.object({
     kanji: z.string(),
     romaji: z.string(),
     translation: z.string(),
-    topic: z.string(),
+    topic: z.string(), // Legacy field - kept for backward compatibility
+    topic_id: z.string().nullable(),
+    topic_details: TopicSchema.nullable(),
+    translation_breakdown: TranslationBreakdownSchema.nullable(),
     user_pronunciation: z.string(),
     evaluation_score: z.number().nullable(),
     evaluation_feedback: z.string().nullable(),
@@ -125,7 +152,10 @@ export const UserEvaluatedPhraseSchema = z.object({
     phrase: z.string(), // romaji pronunciation
     kanji: z.string(),
     translation: z.string(),
-    topic: z.string(),
+    topic: z.string(), // Legacy field
+    topic_id: z.string().nullable(),
+    topic_details: TopicSchema.nullable(),
+    translation_breakdown: TranslationBreakdownSchema.nullable(),
     latest_evaluation_date: z.string(),
     best_score: z.number().nullable(),
     evaluation_count: z.number(),

@@ -7,18 +7,35 @@ export interface PronunciationData {
     kanji: string;
     romaji: string;
     translation: string;
+    topic?: string;
+    translationBreakdown?: TranslationBreakdown;
+}
+
+export interface TranslationBreakdown {
+    originalText: string;
+    segments: TranslationSegment[];
+}
+
+export interface TranslationSegment {
+    text: string;
+    translation: string;
+    confidence: number;
+    position: number;
 }
 
 export interface EnhancementRequest {
     kanji: string;
     currentRomaji: string;
     currentTranslation: string;
+    translationBreakdown?: TranslationBreakdown;
 }
 
 export interface EnhancementResult {
     kanji: string;
     romaji: string;
     translation: string;
+    topic?: string;
+    translationBreakdown?: TranslationBreakdown;
 }
 
 export class PronunciationService {
@@ -95,7 +112,8 @@ export class PronunciationService {
             // Filter items that need enhancement
             const needsEnhancement = items.filter(item =>
                 item.currentRomaji === 'pronunciation_needed' ||
-                item.currentTranslation === 'translation_needed'
+                item.currentTranslation === 'translation_needed' ||
+                !item.translationBreakdown
             );
 
             if (needsEnhancement.length === 0) {
@@ -103,6 +121,8 @@ export class PronunciationService {
                     kanji: item.kanji,
                     romaji: item.currentRomaji,
                     translation: item.currentTranslation,
+                    topic: undefined,
+                    translationBreakdown: undefined,
                 }));
             }
 
@@ -133,6 +153,8 @@ export class PronunciationService {
             // Parse the JSON response
             const enhancedData = JSON.parse(responseText);
 
+            console.log(enhancedData);
+
             if (!Array.isArray(enhancedData) || enhancedData.length !== needsEnhancement.length) {
                 throw new Error('Invalid response format from OpenAI');
             }
@@ -142,7 +164,7 @@ export class PronunciationService {
             let enhancedIndex = 0;
 
             for (const item of items) {
-                if (item.currentRomaji === 'pronunciation_needed' || item.currentTranslation === 'translation_needed') {
+                if (item.currentRomaji === 'pronunciation_needed' || item.currentTranslation === 'translation_needed' || !item.translationBreakdown) {
                     results.push(enhancedData[enhancedIndex]);
                     enhancedIndex++;
                 } else {
@@ -150,6 +172,8 @@ export class PronunciationService {
                         kanji: item.kanji,
                         romaji: item.currentRomaji,
                         translation: item.currentTranslation,
+                        topic: undefined,
+                        translationBreakdown: undefined,
                     });
                 }
             }
@@ -174,7 +198,7 @@ export class PronunciationService {
         }));
 
         return `
-Please provide accurate romaji pronunciation and English translation for the following Japanese kanji/phrases. 
+Please provide accurate romaji pronunciation, English translation, topic classification, and detailed translation breakdown for the following Japanese kanji/phrases. 
 Return the response as a JSON array with exactly ${items.length} objects in the same order as provided.
 
 Input data:
@@ -183,14 +207,60 @@ ${JSON.stringify(itemsJson, null, 2)}
 Instructions:
 1. For each item, provide accurate romaji pronunciation using standard Hepburn romanization
 2. Provide clear, concise English translation (no more than 3-4 words when possible)
-3. For compound words or phrases, provide the most common/natural pronunciation and meaning
-4. Return ONLY valid JSON format, no explanations or extra text
-5. Each object must have: {"kanji": "original_kanji", "romaji": "pronunciation", "translation": "meaning"}
+3. Classify the topic into one of: 'daily_life' ,'travel', 'shopping', 'food', 'health', 'professional', 'education', 'social','technology','culture','general'     
+4. Create detailed translation breakdown with segments for compound phrases
+5. For compound words or phrases, provide the most common/natural pronunciation and meaning
+6. Return ONLY valid JSON format, no explanations or extra text
+7. Each object must include all required fields as shown in example
 
 Example response format:
 [
-  {"kanji": "こんにちは", "romaji": "konnichiwa", "translation": "hello"},
-  {"kanji": "ありがとう", "romaji": "arigatou", "translation": "thank you"}
+  {
+    "kanji": "こんにちは", 
+    "romaji": "konnichiwa", 
+    "translation": "hello",
+    "topic": "conversation",
+    "translationBreakdown": {
+      "originalText": "こんにちは",
+      "segments": [
+        {
+          "text": "こんにちは (konnichiwa)",
+          "translation": "hello",
+          "confidence": 0.95,
+          "position": 0
+        }
+      ]
+    }
+  },
+  {
+    "kanji": "お疲れ様でした", 
+    "romaji": "otsukaresama deshita", 
+    "translation": "good work",
+    "topic": "business",
+    "translationBreakdown": {
+      "originalText": "お疲れ様でした",
+      "segments": [
+        {
+          "text": "お疲れ (o tsukare) ",
+          "translation": "tired",
+          "confidence": 0.9,
+          "position": 0
+        },
+        {
+          "text": "様 (sama)",
+          "translation": "honorific",
+          "confidence": 0.85,
+          "position": 1
+        },
+        {
+          "text": "でした (deshita)",
+          "translation": "was (polite)",
+          "confidence": 0.9,
+          "position": 2
+        }
+      ]
+    }
+  }
 ]
 
 Respond with the JSON array now:`;
